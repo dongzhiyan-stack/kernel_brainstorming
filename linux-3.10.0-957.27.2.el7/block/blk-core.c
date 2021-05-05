@@ -43,6 +43,12 @@
 #include "blk-mq-tag.h"
 #include "blk-mq-sched.h"
 
+/***hujunpeng***test**********/
+extern int block_open_printk;
+extern unsigned long gettimeofday_us(void); 
+static unsigned long block_temp;
+
+
 #ifdef CONFIG_DEBUG_FS
 struct dentry *blk_debugfs_root;
 #endif
@@ -64,6 +70,7 @@ struct kmem_cache *request_cachep = NULL;
  * For queue allocation
  */
 struct kmem_cache *blk_requestq_cachep;
+
 
 /*
  * Controlling structure to kblockd
@@ -1959,6 +1966,12 @@ get_rq:
 	 * Grab a free request. This is might sleep but can not fail.
 	 * Returns with the queue unlocked.
 	 */
+        
+        /***hujunpeng***test**********/
+        if(block_open_printk){
+             printk("%s %s %d get_request enter %ldus\n",__func__,current->comm,current->pid,gettimeofday_us());
+             block_temp = gettimeofday_us();
+        }
 	blk_queue_enter_live(q);
 	req = get_request(q, rw_flags, bio, 0);
 	if (IS_ERR(req)) {
@@ -1966,7 +1979,9 @@ get_rq:
 		bio_endio(bio, PTR_ERR(req));	/* @q is dead */
 		goto out_unlock;
 	}
-
+        /***hujunpeng***test**********/
+        if(block_open_printk)
+             printk("%s %s %d get_request exit dx:%ld %ldus\n",__func__,current->comm,current->pid,gettimeofday_us()-block_temp,gettimeofday_us());
 	/*
 	 * After dropping the lock and possibly sleeping here, our request
 	 * may now be mergeable after it had proven unmergeable (above).
@@ -2534,6 +2549,11 @@ void blk_account_io_done(struct request *req)
 		cpu = part_stat_lock();
 		part = req->part;
 
+                /***hujunpeng***test**********/
+                if(block_open_printk){
+                    int in_flight = atomic_read(&part->in_flight[0]) + atomic_read(&part->in_flight[1]);
+	            printk("%s %s %d req:0x%p %s in_flight:%d %ldus\n",__func__,current->comm,current->pid,req,req->rq_disk->disk_name,in_flight-1,gettimeofday_us());
+                }
 		part_stat_inc(cpu, part, ios[rw]);
 		part_stat_add(cpu, part, ticks[rw], duration);
 		part_round_stats(req->q, cpu, part);
@@ -2576,6 +2596,10 @@ void blk_account_io_start(struct request *rq, bool new_io)
 		return;
 
 	cpu = part_stat_lock();
+
+        /***hujunpeng***test**********/
+        if(block_open_printk)
+	    printk("%s %s %d req:0x%p new_io:%d %ldus\n",__func__,current->comm,current->pid,rq,new_io,gettimeofday_us());
 
 	if (!new_io) {
 		part = rq->part;

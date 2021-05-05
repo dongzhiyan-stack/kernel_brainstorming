@@ -507,7 +507,12 @@ void elv_dispatch_add_tail(struct request_queue *q, struct request *rq)
 
 	q->end_sector = rq_end_sector(rq);
 	q->boundary_rq = rq;
-	list_add_tail(&rq->queuelist, &q->queue_head);
+
+	if(strcmp(current->comm,"test") == 0){
+            list_add(&rq->queuelist, &q->queue_head);
+            printk("%s test req:0x%p\n",__func__,rq);
+        }else
+            list_add_tail(&rq->queuelist, &q->queue_head);
 }
 EXPORT_SYMBOL(elv_dispatch_add_tail);
 

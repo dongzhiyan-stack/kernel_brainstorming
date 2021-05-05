@@ -39,6 +39,12 @@
 #include "scsi_logging.h"
 
 
+/***hujunpeng***test**********/
+extern int block_open_printk;
+extern unsigned long gettimeofday_us(void);
+static unsigned long block_temp;
+
+
 struct kmem_cache *scsi_sdb_cache;
 
 /*
@@ -1617,12 +1623,20 @@ static void scsi_request_fn(struct request_queue *q)
 	struct Scsi_Host *shost;
 	struct scsi_cmnd *cmd;
 	struct request *req;
+        /***hujunpeng***test**********/
+        int req_dispatch = 0;
 
 	/*
 	 * To start with, we keep looping until the queue is empty, or until
 	 * the host is no longer able to accept any more requests.
 	 */
 	shost = sdev->host;
+        
+        /***hujunpeng***test**********/
+        if(block_open_printk){
+	    printk("%s %s %d enter %ldus\n",__func__,current->comm,current->pid,gettimeofday_us());
+            block_temp = gettimeofday_us();
+        }
 	for (;;) {
 		int rtn;
 		/*
@@ -1634,6 +1648,16 @@ static void scsi_request_fn(struct request_queue *q)
 		if (!req)
 			break;
 
+                /***hujunpeng***test**********/
+                if(block_open_printk){
+		    //struct hd_struct *part;
+                    //int in_flight; 
+		    //part = req->part;
+                    //in_flight = atomic_read(&part->in_flight[0]) + atomic_read(&part->in_flight[1]);
+                    req_dispatch ++;
+	            printk("%s %s %d blk_peek_request req:0x%p req_dispatch:%d %ldus\n",__func__,current->comm,current->pid,req,req_dispatch,gettimeofday_us());
+                }
+
 		if (unlikely(!scsi_device_online(sdev))) {
 			sdev_printk(KERN_ERR, sdev,
 				    "rejecting I/O to offline device\n");
@@ -1641,9 +1665,13 @@ static void scsi_request_fn(struct request_queue *q)
 			continue;
 		}
 
-		if (!scsi_dev_queue_ready(q, sdev))
+		if (!scsi_dev_queue_ready(q, sdev)){
+                    /***hujunpeng***test**********/
+                    if(block_open_printk)
+	                printk("%s %s %d scsi_dev_queue_ready(q, sdev) %ldus\n",__func__,current->comm,current->pid,gettimeofday_us());
+                
 			break;
-
+                }
 		/*
 		 * Remove the request from the request list.
 		 */
@@ -1678,12 +1706,19 @@ static void scsi_request_fn(struct request_queue *q)
 			goto not_ready;
 		}
 
-		if (!scsi_target_queue_ready(shost, sdev))
+		if (!scsi_target_queue_ready(shost, sdev)){
+                    /***hujunpeng***test**********/
+                    if(block_open_printk)
+	                printk("%s %s %d scsi_target_queue_ready(shost, sdev) %ldus\n",__func__,current->comm,current->pid,gettimeofday_us());
 			goto not_ready;
-
-		if (!scsi_host_queue_ready(q, shost, sdev))
+                }
+		if (!scsi_host_queue_ready(q, shost, sdev)){
+                    /***hujunpeng***test**********/
+                    if(block_open_printk)
+	                printk("%s %s %d scsi_host_queue_ready(q, shost, sdev) %ldus\n",__func__,current->comm,current->pid,gettimeofday_us());
+        
 			goto host_not_ready;
-	
+	        }
 		if (sdev->simple_tags)
 			cmd->flags |= SCMD_TAGGED;
 		else
@@ -1701,12 +1736,20 @@ static void scsi_request_fn(struct request_queue *q)
 		cmd->scsi_done = scsi_done;
 		rtn = scsi_dispatch_cmd(cmd);
 		if (rtn) {
+                        /***hujunpeng***test**********/
+                        if(block_open_printk)
+	                    printk("%s %s %d scsi_dispatch_cmd:%d %ldus\n",__func__,current->comm,current->pid,rtn,gettimeofday_us());
+
 			scsi_queue_insert(cmd, rtn);
 			spin_lock_irq(q->queue_lock);
 			goto out_delay;
 		}
 		spin_lock_irq(q->queue_lock);
 	}
+        /***hujunpeng***test**********/
+        if(block_open_printk){
+            printk("%s %s %d exit  dx:%ld %ldus\n",__func__,current->comm,current->pid,gettimeofday_us()-block_temp,gettimeofday_us());
+        }
 
 	return;
 
