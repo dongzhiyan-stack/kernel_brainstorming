@@ -210,6 +210,7 @@ enum rq_flag_bits {
 #else
 	__REQ_STATS,
 #endif
+        __REQ_HIGHPRIO,         /* 高优先级传输的req */
 	__REQ_NR_BITS,		/* stops here */
 };
 
@@ -265,6 +266,8 @@ enum rq_flag_bits {
 #define REQ_MQ_INFLIGHT		(1ULL << __REQ_MQ_INFLIGHT)
 /* IO stats tracking on */
 #define REQ_STATS		(1ULL << __REQ_STATS)
+/*高优先传输的req*/
+#define REQ_HIGHPRIO            (1ULL << __REQ_HIGHPRIO)
 
 enum req_op {
 	REQ_OP_READ,

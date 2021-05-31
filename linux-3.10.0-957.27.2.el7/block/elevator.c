@@ -508,13 +508,26 @@ void elv_dispatch_add_tail(struct request_queue *q, struct request *rq)
 	q->end_sector = rq_end_sector(rq);
 	q->boundary_rq = rq;
 
-	if(strcmp(current->comm,"test") == 0){
-            list_add(&rq->queuelist, &q->queue_head);
-            printk("%s test req:0x%p\n",__func__,rq);
-        }else
-            list_add_tail(&rq->queuelist, &q->queue_head);
+	list_add_tail(&rq->queuelist, &q->queue_head);
 }
 EXPORT_SYMBOL(elv_dispatch_add_tail);
+
+void elv_dispatch_add_head(struct request_queue *q, struct request *rq)
+{
+	if (q->last_merge == rq)
+		q->last_merge = NULL;
+
+	elv_rqhash_del(q, rq);
+
+	q->nr_sorted--;
+
+	q->end_sector = rq_end_sector(rq);
+	q->boundary_rq = rq;
+
+        list_add(&rq->queuelist, &q->queue_head);
+        printk("%s test req:0x%p\n",__func__,rq);
+}
+EXPORT_SYMBOL(elv_dispatch_add_head);
 
 int elv_merge(struct request_queue *q, struct request **req, struct bio *bio)
 {
