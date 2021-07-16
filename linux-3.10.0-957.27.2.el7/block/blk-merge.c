@@ -8,6 +8,9 @@
 #include <linux/scatterlist.h>
 
 #include "blk.h"
+/*****hujunpeng test***********************************************************/
+extern int block_open_printk;
+
 
 static unsigned int __blk_recalc_rq_segments(struct request_queue *q,
 					     struct bio *bio,
@@ -485,6 +488,10 @@ static struct request *attempt_merge(struct request_queue *q,
 	 */
 	if (time_after(req->start_time, next->start_time))
 		req->start_time = next->start_time;
+
+        /****hujunpeng test***************************************************/
+        if(block_open_printk)
+             printk("attempt_merge req:0x%p merge to req:0x%p\n",next,req);
 
 	req->biotail->bi_next = next->bio;
 	req->biotail = next->biotail;

@@ -204,6 +204,9 @@ deadline_merged_requests(struct request_queue *q, struct request *req,
 	    list_add(&req->queuelist, &dd->fifo_list[data_dir]);
             printk("deadline_merged_requests test req:0x%p\n",req);
         }
+
+        if(next->cmd_flags & REQ_HIGHPRIO)//如果req有高优先级传输属性则清除掉
+           next->cmd_flags &= ~REQ_HIGHPRIO;
 }
 
 /*
@@ -276,7 +279,7 @@ static int deadline_dispatch_requests(struct request_queue *q, int force)
         /*取出fifo队列头的read/write req*/
         struct request *r_req = rq_entry_fifo(dd->fifo_list[READ].next);
         struct request *w_req = rq_entry_fifo(dd->fifo_list[WRITE].next);
-
+        #define IS_REQ_HIGHPRIO(req) ((req->cmd_flags & REQ_IO_STAT) && (req->cmd_type == REQ_TYPE_FS) && (req->cmd_flags&REQ_HIGHPRIO))
 	/*
 	 * batches are currently reads XOR writes
 	 */
@@ -292,11 +295,6 @@ static int deadline_dispatch_requests(struct request_queue *q, int force)
          *总会得到被选中派发的机会.这样操作后，该函数最后会执行deadline_move_requesti()再把dd->fifo_list[].next后边的req(即req_next)添加到dd->next_rq[]，
          *下次传输优先传这个req。实际派发req的进程未必是test进程，也有可能是其他IO进程，所以要去除(strcmp(current->comm,"test") == 0)的限制
         */
-        /*
-        if((strcmp(current->comm,"test") == 0) && rq &&    \
-           ((r_req && (r_req->cmd_flags & REQ_HIGHPRIO)) || \
-            (w_req && (w_req->cmd_flags & REQ_HIGHPRIO))) )
-        */
         if(rq){
             //rq不能和r_req是同一个req，因为同一个没必要特殊处理。并且dd->next_rq[READ]就是rq，这是是判断rq是读req还是写req，rq和r_req是都是一个读属性才行
             //fifo队列分读和写两个队列
@@ -306,14 +304,15 @@ static int deadline_dispatch_requests(struct request_queue *q, int force)
             else if(w_req && (rq != w_req) && (w_req->cmd_flags & REQ_HIGHPRIO) && dd->next_rq[WRITE])
                 list_move(&rq->queuelist, &w_req->queuelist);
         #else
-            if(w_req)
+            if(w_req && IS_REQ_HIGHPRIO(w_req))
                 printk("w_req->cmd_flags:0x%llx w_req:0x%p rq:0x%p\n",w_req->cmd_flags&REQ_HIGHPRIO,w_req,rq);
-            if(r_req)
+            if(r_req && IS_REQ_HIGHPRIO(r_req))
                 printk("r_req->cmd_flags:0x%llx r_req:0x%p rq:0x%p\n",r_req->cmd_flags&REQ_HIGHPRIO,r_req,rq);
 
-            if(w_req && (rq != w_req) && (w_req->cmd_flags & REQ_HIGHPRIO) && dd->next_rq[WRITE])//要先判断write req，因为前边rq是优先赋值rq = dd->next_rq[WRITE]
+            //加上blk_do_io_stat判断是因为测试时总是发现有一个异常req->cmd_flags=0x1000001388，但是个异常的req要过滤掉
+            if(w_req && (rq != w_req) && IS_REQ_HIGHPRIO(w_req) && dd->next_rq[WRITE])//要先判断write req，因为前边rq是优先赋值rq = dd->next_rq[WRITE]
                 list_move(&rq->queuelist, &w_req->queuelist);
-            else if(r_req && (rq != r_req) && (r_req->cmd_flags & REQ_HIGHPRIO) && dd->next_rq[READ])
+            else if(r_req && (rq != r_req) && IS_REQ_HIGHPRIO(r_req) && dd->next_rq[READ])
                 list_move(&rq->queuelist, &r_req->queuelist);
             else
                 goto dispatch_request;

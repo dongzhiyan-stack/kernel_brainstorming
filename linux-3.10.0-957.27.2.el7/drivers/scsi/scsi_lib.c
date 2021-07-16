@@ -1650,11 +1650,7 @@ static void scsi_request_fn(struct request_queue *q)
 
                 /***hujunpeng***test**********/
                 if(block_open_printk){
-		    //struct hd_struct *part;
-                    //int in_flight; 
-		    //part = req->part;
-                    //in_flight = atomic_read(&part->in_flight[0]) + atomic_read(&part->in_flight[1]);
-                    req_dispatch ++;
+		    req_dispatch ++;
 	            printk("%s %s %d blk_peek_request req:0x%p req_dispatch:%d %ldus\n",__func__,current->comm,current->pid,req,req_dispatch,gettimeofday_us());
                 }
 

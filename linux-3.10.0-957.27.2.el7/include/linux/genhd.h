@@ -119,6 +119,8 @@ struct hd_struct {
 #endif
 	unsigned long stamp;
 	atomic_t in_flight[2];
+        //该变量只表示在IO队列中的req个数，不包含已经派发但是没有传输完成的req
+	atomic_t in_flight_real;
 #ifdef	CONFIG_SMP
 	struct disk_stats __percpu *dkstats;
 #else

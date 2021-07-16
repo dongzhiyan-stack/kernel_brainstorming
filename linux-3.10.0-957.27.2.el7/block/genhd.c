@@ -50,6 +50,8 @@ void part_inc_in_flight(struct request_queue *q, struct hd_struct *part, int rw)
 		return;
 
 	atomic_inc(&part->in_flight[rw]);
+	atomic_inc(&part->in_flight_real);//增加IO队列req计数
+
 	if (part->partno)
 		atomic_inc(&part_to_disk(part)->part0.in_flight[rw]);
 }

@@ -2526,6 +2526,14 @@ void blk_account_io_completion(struct request *req, unsigned int bytes)
 		struct hd_struct *part;
 		int cpu;
 
+                if(req->cmd_flags & REQ_HIGHPRIO)//如果req有高优先级传输属性则清除掉
+                    req->cmd_flags &= ~REQ_HIGHPRIO;
+
+                /***hujunpeng***test**********/
+                if(block_open_printk){
+	            printk("%s %s %d req:0x%p %s bytes:%d  %ldus\n",__func__,current->comm,current->pid,req,req->rq_disk->disk_name,bytes,gettimeofday_us());
+                }
+
 		cpu = part_stat_lock();
 		part = req->part;
 		part_stat_add(cpu, part, sectors[rw], bytes >> 9);
@@ -2548,11 +2556,14 @@ void blk_account_io_done(struct request *req)
 
 		cpu = part_stat_lock();
 		part = req->part;
+                if(req->cmd_flags & REQ_HIGHPRIO)//如果req有高优先级传输属性则清除掉
+                    req->cmd_flags &= ~REQ_HIGHPRIO;
 
                 /***hujunpeng***test**********/
                 if(block_open_printk){
                     int in_flight = atomic_read(&part->in_flight[0]) + atomic_read(&part->in_flight[1]);
-	            printk("%s %s %d req:0x%p %s in_flight:%d %ldus\n",__func__,current->comm,current->pid,req,req->rq_disk->disk_name,in_flight-1,gettimeofday_us());
+                    int in_flight_real = atomic_read(&part->in_flight_real);
+	            printk("%s %s %d req:0x%p %s in_flight:%d in_flight_real:%d %ldus\n",__func__,current->comm,current->pid,req,req->rq_disk->disk_name,in_flight-1,in_flight_real,gettimeofday_us());
                 }
 		part_stat_inc(cpu, part, ios[rw]);
 		part_stat_add(cpu, part, ticks[rw], duration);
@@ -2726,7 +2737,12 @@ struct request *blk_peek_request(struct request_queue *q)
 			break;
 		}
 	}
-
+        //从IO队列取出一个req派发，则in_flight的req总数减1
+        if(rq && rq->part){
+            struct hd_struct *part = rq->part;
+            if(atomic_read(&part->in_flight_real) > 0)
+                atomic_dec(&part->in_flight_real);
+        }
 	return rq;
 }
 EXPORT_SYMBOL(blk_peek_request);
@@ -3558,6 +3574,9 @@ void blk_flush_plug_list(struct blk_plug *plug, bool from_schedule)
 	q = NULL;
 	depth = 0;
 
+        /*************************************************/
+        if(block_open_printk)
+            printk("%s %d %d\n",__func__,current->comm,current->pid);
 	/*
 	 * Save and disable interrupts here, to avoid doing it for every
 	 * queue lock we have to take.
