@@ -1748,6 +1748,12 @@ bool bio_attempt_back_merge(struct request_queue *q, struct request *req,
 	req->biotail = bio;
 	req->__data_len += bio->bi_size;
 	req->ioprio = ioprio_best(req->ioprio, bio_prio(bio));
+        
+        //如果合并的bio有高优先级属性则设置req高优先级，还要清理掉bio的高优先级属性，这个隐藏点很重要
+        if(bio->bi_flags & (1 << BIO_HIGHPRIO)){
+            req->cmd_flags |= REQ_HIGHPRIO;
+            bio->bi_flags &= ~(1 << BIO_HIGHPRIO);
+        }
 
 	blk_account_io_start(req, false);
 	return true;
@@ -1778,6 +1784,12 @@ bool bio_attempt_front_merge(struct request_queue *q, struct request *req,
 	req->__sector = bio->bi_sector;
 	req->__data_len += bio->bi_size;
 	req->ioprio = ioprio_best(req->ioprio, bio_prio(bio));
+
+        //如果合并的bio有高优先级属性则设置req高优先级，还要清理掉bio的高优先级属性，这个隐藏点很重要
+        if(bio->bi_flags & (1 << BIO_HIGHPRIO)){
+            req->cmd_flags |= REQ_HIGHPRIO;
+            bio->bi_flags &= ~(1 << BIO_HIGHPRIO);
+        }
 
 	blk_account_io_start(req, false);
 	return true;
@@ -1973,6 +1985,7 @@ get_rq:
              block_temp = gettimeofday_us();
         }
 	blk_queue_enter_live(q);
+        //可以优化，如果多进程因为没有空闲req而休眠，则bio有BIO_HIGHPRIO属性的进程优先调度分配req结构体
 	req = get_request(q, rw_flags, bio, 0);
 	if (IS_ERR(req)) {
 		blk_queue_exit(q);
@@ -1982,6 +1995,12 @@ get_rq:
         /***hujunpeng***test**********/
         if(block_open_printk)
              printk("%s %s %d get_request exit dx:%ld %ldus\n",__func__,current->comm,current->pid,gettimeofday_us()-block_temp,gettimeofday_us());
+
+        if(bio->bi_flags & (1 << BIO_HIGHPRIO)){
+            bio->bi_flags &= ~(1 << BIO_HIGHPRIO);//清空bio的高优先级属性，隐藏的关键点
+            req->cmd_flags |= REQ_HIGHPRIO;//如果bio有高优先级传输属性则设置对应的req高优先级传输
+            //printk("%s %s %d req->cmd_flags |= REQ_HIGHPRIO \n",__func__,current->comm,current->pid);
+        }
 	/*
 	 * After dropping the lock and possibly sleeping here, our request
 	 * may now be mergeable after it had proven unmergeable (above).
@@ -2526,7 +2545,7 @@ void blk_account_io_completion(struct request *req, unsigned int bytes)
 		struct hd_struct *part;
 		int cpu;
 
-                if(req->cmd_flags & REQ_HIGHPRIO)//如果req有高优先级传输属性则清除掉
+                if(req->cmd_flags & REQ_HIGHPRIO)//如果req有高优先级传输属性则清除掉，这个隐藏点点很重要
                     req->cmd_flags &= ~REQ_HIGHPRIO;
 
                 /***hujunpeng***test**********/
@@ -2556,7 +2575,7 @@ void blk_account_io_done(struct request *req)
 
 		cpu = part_stat_lock();
 		part = req->part;
-                if(req->cmd_flags & REQ_HIGHPRIO)//如果req有高优先级传输属性则清除掉
+                if(req->cmd_flags & REQ_HIGHPRIO)//如果req有高优先级传输属性则清除掉，这个隐藏点点很重要
                     req->cmd_flags &= ~REQ_HIGHPRIO;
 
                 /***hujunpeng***test**********/
@@ -3576,7 +3595,7 @@ void blk_flush_plug_list(struct blk_plug *plug, bool from_schedule)
 
         /*************************************************/
         if(block_open_printk)
-            printk("%s %d %d\n",__func__,current->comm,current->pid);
+            printk("%s %s %d\n",__func__,current->comm,current->pid);
 	/*
 	 * Save and disable interrupts here, to avoid doing it for every
 	 * queue lock we have to take.

@@ -147,6 +147,9 @@ struct throtl_grp {
 
 	/* List of tgs waiting for per cpu stats memory to be allocated */
 	struct list_head stats_alloc_node;
+
+        /*进程IO请求优先级控制，设置非0后，该进程IO传输时，req都是高优先级传输，准确说是先于其他进程优先传输该req*/
+        unsigned int io_priority_control;
 };
 
 struct throtl_data
@@ -458,7 +461,7 @@ static void tg_update_has_rules(struct throtl_grp *tg)
 
 	for (rw = READ; rw <= WRITE; rw++)
 		tg->has_rules[rw] = (parent_tg && parent_tg->has_rules[rw]) ||
-				    (tg->bps[rw] != -1 || tg->iops[rw] != -1);
+				    (tg->bps[rw] != -1 || tg->iops[rw] != -1 || tg->io_priority_control != 0);
 }
 
 static void throtl_pd_online(struct blkcg_gq *blkg)
@@ -910,6 +913,11 @@ static bool tg_may_dispatch(struct throtl_grp *tg, struct bio *bio,
 	BUG_ON(tg->service_queue.nr_queued[rw] &&
 	       bio != throtl_peek_queued(&tg->service_queue.queued[rw]));
 
+        /*当前进程有没有设置高优先级IO传输*/
+        if(tg->io_priority_control != 0){
+            bio->bi_flags |= (1 << BIO_HIGHPRIO);
+            //printk("%s %s 0x%lx\n",__func__,current->comm,bio->bi_flags);
+        }
 	/* If tg->bps = -1, then BW is unlimited */
 	if (tg->bps[rw] == -1 && tg->iops[rw] == -1) {
 		if (wait)
@@ -1383,6 +1391,7 @@ static int tg_set_conf(struct cgroup *cgrp, struct cftype *cft, const char *buf,
 	 * restrictions in the whole hierarchy and allows them to bypass
 	 * blk-throttle.
 	 */
+        //如果配置了blkio iops、IO流量限流等属性，则tg->has_rules=1
 	tg_update_has_rules(tg);
 	blkg_for_each_descendant_pre(blkg, pos_cgrp, ctx.blkg)
 		tg_update_has_rules(blkg_to_tg(blkg));
@@ -1457,6 +1466,13 @@ static struct cftype throtl_files[] = {
 		.name = "throttle.io_serviced",
 		.private = offsetof(struct tg_stats_cpu, serviced),
 		.read_seq_string = tg_print_cpu_rwstat,
+	},
+        {
+		.name = "throttle.io_priority_control",
+		.private = offsetof(struct throtl_grp, io_priority_control),
+		.read_seq_string = tg_print_conf_u64,
+		.write_string = tg_set_conf_u64,
+		.max_write_len = 256,
 	},
 	{ }	/* terminate */
 };

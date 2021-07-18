@@ -109,11 +109,11 @@ deadline_add_request(struct request_queue *q, struct request *rq)
 	/*
 	 * set expire time and add to fifo list
 	 */
-        if(strcmp(current->comm,"test") == 0){
-	    rq->fifo_time = jiffies;//req放入fifo链表头，超时时间0，保证最快被调度派发给驱动
-            rq->cmd_flags |= REQ_HIGHPRIO;//设置req高优先级
+        //如果req有高优先级传输属性，deadline算法把req添加到fifo队列，添加到红黑树队列在上边的deadline_add_rq_rb()
+        if(rq->cmd_flags & REQ_HIGHPRIO){
+	    rq->fifo_time = jiffies;//如果req有高优先级传输属性，则req放入fifo链表头，超时时间0，保证最快被调度派发给驱动
 	    list_add(&rq->queuelist, &dd->fifo_list[data_dir]);
-            printk("deadline_add_request test req:0x%p\n",rq);
+            printk("deadline_add_request high prio req:0x%p\n",rq);
         }else{
 	    rq->fifo_time = jiffies + dd->fifo_expire[data_dir];
 	    list_add_tail(&rq->queuelist, &dd->fifo_list[data_dir]);
@@ -195,18 +195,21 @@ deadline_merged_requests(struct request_queue *q, struct request *req,
 	 */
 	deadline_remove_request(q, next);
         
-        if(strcmp(current->comm,"test") == 0){
+        //next合并到req，next的高优先级传递到req,并且req要放到fifo队列头，会得到优先派发的机会 
+        if(next->cmd_flags & REQ_HIGHPRIO){
 	    struct deadline_data *dd = q->elevator->elevator_data;
 	    const int data_dir = rq_data_dir(req);
 
 	    req->fifo_time = jiffies;//req放入fifo链表头，超时时间0，保证最快被调度派发给驱动
             req->cmd_flags |= REQ_HIGHPRIO;//设置req高优先级
-	    list_add(&req->queuelist, &dd->fifo_list[data_dir]);
-            printk("deadline_merged_requests test req:0x%p\n",req);
-        }
+            /*因为req本身就在dd->fifo_list[data_dir]，必须使用list_move:把req先从dd->fifo_list[data_dir]删除掉再添加到dd->fifo_list[data_dir]链表头*/
+	    //list_add(&req->queuelist, &dd->fifo_list[data_dir]);
+            list_move(&req->queuelist, &dd->fifo_list[data_dir]);
 
-        if(next->cmd_flags & REQ_HIGHPRIO)//如果req有高优先级传输属性则清除掉
-           next->cmd_flags &= ~REQ_HIGHPRIO;
+            //如果next这个req有高优先级传输属性，必须清理掉，它不会参与IO传输，这是唯一清理高优先级属性的机会
+            next->cmd_flags &= ~REQ_HIGHPRIO;
+            printk("deadline_merged_requests high prio req:0x%p\n",req);
+        }
 }
 
 /*
@@ -221,6 +224,7 @@ deadline_move_to_dispatch(struct deadline_data *dd, struct request *rq)
 
         //这里有个漏洞，也有可能是其他进程派发test进程提交的req，不能以进程限制
         //if(strcmp(current->comm,"test") == 0)
+        //如果req有高优先级传输属性，则要把req加入q->queue_head链表头，这样该req会得到优先派发
         if(rq->cmd_flags & REQ_HIGHPRIO)
 	    elv_dispatch_add_head(q, rq);
         else
@@ -276,6 +280,7 @@ static int deadline_dispatch_requests(struct request_queue *q, int force)
 	const int writes = !list_empty(&dd->fifo_list[WRITE]);
 	struct request *rq;
 	int data_dir;
+
         /*取出fifo队列头的read/write req*/
         struct request *r_req = rq_entry_fifo(dd->fifo_list[READ].next);
         struct request *w_req = rq_entry_fifo(dd->fifo_list[WRITE].next);
@@ -289,40 +294,45 @@ static int deadline_dispatch_requests(struct request_queue *q, int force)
 		rq = dd->next_rq[READ];
         
         /*
-         *如果req是高优先级,直接派发dd->fifo_list[].next队列头的req。还要把rq=dd->next_rq[]这个req放到dd->fifo_list[].next后边。为什么呢?
+         *如果fifo队列头的req有高优先级传输属性,直接派发dd->fifo_list[].next队列头的这个req。还要把rq=dd->next_rq[]这个req放到dd->fifo_list[].next后边。为什么呢?
          *该函数后边执行deadline_move_request()会把dd->next_rq[]在rb tree的下一个req赋值于dd->next_rq[]，这样dd->next_rq[]原本
          *保存的req就要消失了，得不得传输的机会!!!相当于这个req暂时丢失了,错，不会丢失，因为dd->next_rq[]（称为req_next)保存的req始终在fifo队列和rb tree，
          *总会得到被选中派发的机会.这样操作后，该函数最后会执行deadline_move_requesti()再把dd->fifo_list[].next后边的req(即req_next)添加到dd->next_rq[]，
          *下次传输优先传这个req。实际派发req的进程未必是test进程，也有可能是其他IO进程，所以要去除(strcmp(current->comm,"test") == 0)的限制
         */
-        if(rq){
-            //rq不能和r_req是同一个req，因为同一个没必要特殊处理。并且dd->next_rq[READ]就是rq，这是是判断rq是读req还是写req，rq和r_req是都是一个读属性才行
-            //fifo队列分读和写两个队列
+        if(rq && ((w_req && IS_REQ_HIGHPRIO(w_req)) || (r_req && IS_REQ_HIGHPRIO(r_req)))){
+            //rq不能和r_req是同一个req，因为同一个没必要特殊处理。并且dd->next_rq[READ]就是rq，这是判断rq是读req还是写req，rq和r_req是都是一个读属性才行
+            //fifo队列分读写req链表,读写req要分开处理
         #if 0
-            if(r_req && (rq != r_req) && (r_req->cmd_flags & REQ_HIGHPRIO) && dd->next_rq[READ])
+            if(r_req && (rq != r_req) && (r_req->cmd_flags & REQ_HIGHPRIO) && dd->next_rq[READ])---这个判断不充分，用IS_REQ_HIGHPRIO()充分
                 list_move(&rq->queuelist, &r_req->queuelist);
             else if(w_req && (rq != w_req) && (w_req->cmd_flags & REQ_HIGHPRIO) && dd->next_rq[WRITE])
                 list_move(&rq->queuelist, &w_req->queuelist);
         #else
             if(w_req && IS_REQ_HIGHPRIO(w_req))
-                printk("w_req->cmd_flags:0x%llx w_req:0x%p rq:0x%p\n",w_req->cmd_flags&REQ_HIGHPRIO,w_req,rq);
+                printk("%s w_req->cmd_flags:0x%llx w_req:0x%p rq:0x%p\n",__func__,w_req->cmd_flags&REQ_HIGHPRIO,w_req,rq);
             if(r_req && IS_REQ_HIGHPRIO(r_req))
-                printk("r_req->cmd_flags:0x%llx r_req:0x%p rq:0x%p\n",r_req->cmd_flags&REQ_HIGHPRIO,r_req,rq);
+                printk("%s r_req->cmd_flags:0x%llx r_req:0x%p rq:0x%p\n",__func__,r_req->cmd_flags&REQ_HIGHPRIO,r_req,rq);
 
-            //加上blk_do_io_stat判断是因为测试时总是发现有一个异常req->cmd_flags=0x1000001388，但是个异常的req要过滤掉
+            //加上 IS_REQ_HIGHPRIO 判断是因为测试时总是发现有一个异常req->cmd_flags=0x1000001388，这种异常req要过滤掉
             if(w_req && (rq != w_req) && IS_REQ_HIGHPRIO(w_req) && dd->next_rq[WRITE])//要先判断write req，因为前边rq是优先赋值rq = dd->next_rq[WRITE]
                 list_move(&rq->queuelist, &w_req->queuelist);
             else if(r_req && (rq != r_req) && IS_REQ_HIGHPRIO(r_req) && dd->next_rq[READ])
                 list_move(&rq->queuelist, &r_req->queuelist);
-            else
-                goto dispatch_request;
         #endif
 
-            printk("deadline_dispatch_requests list_move(&rq->queuelist ->%s\n",(r_req->cmd_flags & REQ_HIGHPRIO)?"read":"write");
+            //直接跳到dispatch_find_request分支派发fifo队列头高优先级属性的req，data_dir=WRITE是为了优先派发fifo队列头write属性的高优先级属性的req
+            //如果rq(即dd->next_rq[WRITE])==w_req 或者 rq(dd->next_rq[READ])==r_req,那也goto dispatch_find_request派发fifo队列头的高优先级属性req,都是同一个req
+            if(w_req && IS_REQ_HIGHPRIO(w_req))
+                data_dir = WRITE;
+            else
+                data_dir = READ;
+
+            goto  dispatch_find_request;
         }
-	else if (rq && dd->batching < dd->fifo_batch)
-		/* we have a next request are still entitled to batch */
-		goto dispatch_request;
+        else if (rq && dd->batching < dd->fifo_batch)
+            /* we have a next request are still entitled to batch */
+	    goto dispatch_request;
 
 	/*
 	 * at this point we are not running a batch. select the appropriate

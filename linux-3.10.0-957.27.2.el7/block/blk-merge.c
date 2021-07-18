@@ -508,6 +508,12 @@ static struct request *attempt_merge(struct request_queue *q,
 	req->ioprio = ioprio_best(req->ioprio, next->ioprio);
 	if (blk_rq_cpu_valid(next))
 		req->cpu = next->cpu;
+        
+        /*如果next有高优先级属性，则清理掉，但要把高优先级属性传递到req，因为next合并到了req
+        if(next->cmd_flags & REQ_HIGHPRIO){
+            req->cmd_flags |= REQ_HIGHPRIO;---这段代码移动到了上方的 elv_merge_requests->deadline_merged_requests 函数里
+            next->cmd_flags &= (~REQ_HIGHPRIO);
+        }*/
 
 	/*
 	 * ownership of bio passed from next to req, return 'next' for

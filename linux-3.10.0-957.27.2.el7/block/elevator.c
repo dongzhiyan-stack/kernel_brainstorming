@@ -525,7 +525,7 @@ void elv_dispatch_add_head(struct request_queue *q, struct request *rq)
 	q->boundary_rq = rq;
 
         list_add(&rq->queuelist, &q->queue_head);
-        printk("%s test req:0x%p\n",__func__,rq);
+        printk("%s high req:0x%p\n",__func__,rq);
 }
 EXPORT_SYMBOL(elv_dispatch_add_head);
 
