@@ -2678,6 +2678,15 @@ struct request *blk_peek_request(struct request_queue *q)
 	int ret;
 
 	while ((rq = __elv_next_request(q)) != NULL) {
+		//从IO队列取出一个req派发，则in_flight的req总数减1
+		/*if(rq && rq->part){
+		    struct hd_struct *part = rq->part;
+	            atomic_dec(&part->in_flight_real);
+                    if (part->partno){--这段代码移动到 scsi_request_fn->blk_start_request->blk_dequeue_request 函数，执行到blk_start_request才能保证磁盘不会繁忙，才派发req成功
+                        atomic_dec(&part_to_disk(part)->part0.in_flight_real);
+                    }
+		}*/
+
 
 		rq = blk_pm_peek_request(q, rq);
 		if (!rq)
@@ -2756,12 +2765,6 @@ struct request *blk_peek_request(struct request_queue *q)
 			break;
 		}
 	}
-        //从IO队列取出一个req派发，则in_flight的req总数减1
-        if(rq && rq->part){
-            struct hd_struct *part = rq->part;
-            if(atomic_read(&part->in_flight_real) > 0)
-                atomic_dec(&part->in_flight_real);
-        }
 	return rq;
 }
 EXPORT_SYMBOL(blk_peek_request);
@@ -2773,7 +2776,16 @@ void blk_dequeue_request(struct request *rq)
 	BUG_ON(list_empty(&rq->queuelist));
 	BUG_ON(ELV_ON_HASH(rq));
 
-	list_del_init(&rq->queuelist);
+	list_del_init(&rq->queuelist);	
+        //从IO队列取出一个req派发，则in_flight的req总数减1
+	if(rq && rq->part){
+	    struct hd_struct *part = rq->part;
+	    atomic_dec(&part->in_flight_real);
+	    if (part->partno){
+		atomic_dec(&part_to_disk(part)->part0.in_flight_real);
+	    }
+	}
+
 
 	/*
 	 * the time frame between a request being removed from the lists

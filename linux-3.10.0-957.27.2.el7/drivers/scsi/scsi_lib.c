@@ -1651,7 +1651,7 @@ static void scsi_request_fn(struct request_queue *q)
                 /***hujunpeng***test**********/
                 if(block_open_printk){
 		    req_dispatch ++;
-	            printk("%s %s %d blk_peek_request req:0x%p req_dispatch:%d %ldus\n",__func__,current->comm,current->pid,req,req_dispatch,gettimeofday_us());
+	            printk("%s %s %d blk_peek_request req:0x%p %s req_dispatch:%d %ldus\n",__func__,current->comm,current->pid,req,req->rq_disk->disk_name,req_dispatch,gettimeofday_us());
                 }
 
 		if (unlikely(!scsi_device_online(sdev))) {
@@ -1660,7 +1660,7 @@ static void scsi_request_fn(struct request_queue *q)
 			scsi_kill_request(req, q);
 			continue;
 		}
-
+                //如果向驱动派发的req太多，这里就会返回busy
 		if (!scsi_dev_queue_ready(q, sdev)){
                     /***hujunpeng***test**********/
                     if(block_open_printk)

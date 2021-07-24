@@ -52,8 +52,10 @@ void part_inc_in_flight(struct request_queue *q, struct hd_struct *part, int rw)
 	atomic_inc(&part->in_flight[rw]);
 	atomic_inc(&part->in_flight_real);//增加IO队列req计数
 
-	if (part->partno)
+	if (part->partno){
+	        atomic_inc(&part_to_disk(part)->part0.in_flight_real);//增加主块设备的IO队列req计数
 		atomic_inc(&part_to_disk(part)->part0.in_flight[rw]);
+        }
 }
 EXPORT_SYMBOL(part_inc_in_flight);
 
@@ -86,7 +88,7 @@ void part_in_flight(struct request_queue *q, struct hd_struct *part,
 }
 
 void part_in_flight_rw(struct request_queue *q, struct hd_struct *part,
-		       unsigned int inflight[2])
+		       unsigned int inflight[3])
 {
 	if (q->mq_ops) {
 		blk_mq_in_flight_rw(q, part, inflight);
@@ -95,6 +97,7 @@ void part_in_flight_rw(struct request_queue *q, struct hd_struct *part,
 
 	inflight[0] = atomic_read(&part->in_flight[0]);
 	inflight[1] = atomic_read(&part->in_flight[1]);
+	inflight[2] = atomic_read(&part->in_flight_real);
 }
 
 /**

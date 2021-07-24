@@ -143,10 +143,10 @@ ssize_t part_inflight_show(struct device *dev, struct device_attribute *attr,
 {
 	struct hd_struct *p = dev_to_part(dev);
 	struct request_queue *q = part_to_disk(p)->queue;
-	unsigned int inflight[2];
+	unsigned int inflight[3];
 
 	part_in_flight_rw(q, p, inflight);
-	return sprintf(buf, "%8u %8u\n", inflight[0], inflight[1]);
+	return sprintf(buf, "%8u %8u %8u\n", inflight[0], inflight[1], inflight[2]);
 }
 
 #ifdef CONFIG_FAIL_MAKE_REQUEST

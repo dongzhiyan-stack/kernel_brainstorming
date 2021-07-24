@@ -149,6 +149,7 @@ static inline struct request *__elv_next_request(struct request_queue *q)
 
 	while (1) {
 		if (!list_empty(&q->queue_head)) {
+                        //重点，这里只是从q->queue_head取出req，并没有从q->queue_head剔除掉req
 			rq = list_entry_rq(q->queue_head.next);
 			return rq;
 		}
