@@ -1164,6 +1164,16 @@ bool blk_mq_dispatch_rq_list(struct request_queue *q, struct list_head *list,
 
 	WARN_ON(!list_is_singular(list) && got_budget);
 
+        //如果req有高优先级传输属性则将该req放入队列头
+        LIST_HEAD(tmp_list);
+        list_for_each_entry(rq,&list,queuelist){
+            if(rq->cmd_flags & REQ_HIGHPRIO){
+               list_move_tail(&rq->queuelist,&tmp_list);
+            }
+        }
+        if(!list_empty(tmp_lsit)){
+            list_splice_init(&tmp_lsit,list);
+        }
 	/*
 	 * Start off with dptr being NULL, so we start the first request
 	 * immediately, even if we have more pending.
@@ -1848,6 +1858,13 @@ static void blk_mq_make_request(struct request_queue *q, struct bio *bio)
 	rq = blk_mq_sched_get_request(q, bio, bio->bi_rw, &data);
 	if (unlikely(!rq))
 		return;
+
+        if(bio->bi_flags & (1 << BIO_HIGHPRIO)){
+	//清空bio的高优先级传输属性，隐藏的关键点
+	    bio->bi_flags &= ~(1 << BIO_HIGHPRIO);
+	//如果bio有高优先级传输属性则设置对应的req高优先级传输
+	    req->cmd_flags |= REQ_HIGHPRIO;
+	}
 
 	plug = current->plug;
 	if (unlikely(is_flush_fua)) {
