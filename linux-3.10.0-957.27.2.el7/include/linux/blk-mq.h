@@ -36,6 +36,7 @@ struct blk_mq_hw_ctx {
 
 	struct request_queue	*queue;
 	unsigned int		queue_num;
+        atomic_t                queue_transfer_reqs;/* 当前硬件队列有多少个req在传输 */
 
 	void			*driver_data;
 

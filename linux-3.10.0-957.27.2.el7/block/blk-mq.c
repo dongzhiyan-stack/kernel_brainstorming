@@ -1158,6 +1158,7 @@ bool blk_mq_dispatch_rq_list(struct request_queue *q, struct list_head *list,
 	LIST_HEAD(driver_list);
 	struct list_head *dptr;
 	int errors, queued, ret = BLK_MQ_RQ_QUEUE_OK;
+        LIST_HEAD(tmp_list);
 
 	if (list_empty(list))
 		return false;
@@ -1165,14 +1166,13 @@ bool blk_mq_dispatch_rq_list(struct request_queue *q, struct list_head *list,
 	WARN_ON(!list_is_singular(list) && got_budget);
 
         //如果req有高优先级传输属性则将该req放入队列头
-        LIST_HEAD(tmp_list);
-        list_for_each_entry(rq,&list,queuelist){
+        list_for_each_entry(rq,list,queuelist){
             if(rq->cmd_flags & REQ_HIGHPRIO){
                list_move_tail(&rq->queuelist,&tmp_list);
             }
         }
-        if(!list_empty(tmp_lsit)){
-            list_splice_init(&tmp_lsit,list);
+        if(!list_empty(&tmp_list)){
+            list_splice_init(&tmp_list,list);//再把tmp_list链表上的高优先级属性req移动到list链表头
         }
 	/*
 	 * Start off with dptr being NULL, so we start the first request
@@ -1233,6 +1233,7 @@ bool blk_mq_dispatch_rq_list(struct request_queue *q, struct list_head *list,
 		switch (ret) {
 		case BLK_MQ_RQ_QUEUE_OK:
 			queued++;
+                        atomic_inc(&hctx->queue_transfer_reqs);
 			break;
 		case BLK_MQ_RQ_QUEUE_BUSY:
 		case BLK_MQ_RQ_QUEUE_DEV_BUSY:
@@ -1719,6 +1720,7 @@ static int __blk_mq_issue_directly(struct blk_mq_hw_ctx *hctx, struct request *r
 	switch (ret) {
 	case BLK_MQ_RQ_QUEUE_OK:
 		blk_mq_update_dispatch_busy(hctx, false);
+                atomic_inc(&hctx->queue_transfer_reqs);
 		break;
 	case BLK_MQ_RQ_QUEUE_BUSY:
 	case BLK_MQ_RQ_QUEUE_DEV_BUSY:
@@ -1863,8 +1865,14 @@ static void blk_mq_make_request(struct request_queue *q, struct bio *bio)
 	//清空bio的高优先级传输属性，隐藏的关键点
 	    bio->bi_flags &= ~(1 << BIO_HIGHPRIO);
 	//如果bio有高优先级传输属性则设置对应的req高优先级传输
-	    req->cmd_flags |= REQ_HIGHPRIO;
+	    rq->cmd_flags |= REQ_HIGHPRIO;
+	}else if(bio->bi_flags & (1 << BIO_QUEUE_ADJUST)){
+	//清空bio的高优先级传输属性，隐藏的关键点
+	    bio->bi_flags &= ~(1 << BIO_QUEUE_ADJUST);
+	//如果bio有高优先级传输属性则设置对应的req高优先级传输
+	    rq->cmd_flags |= REQ_QUEUE_ADJUST;
 	}
+
 
 	plug = current->plug;
 	if (unlikely(is_flush_fua)) {

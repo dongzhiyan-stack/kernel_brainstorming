@@ -150,6 +150,8 @@ struct throtl_grp {
 
         /*进程IO请求优先级控制，设置非0后，该进程IO传输时，req都是高优先级传输，准确说是先于其他进程优先传输该req*/
         unsigned int io_priority_control;
+        /*支持nvme在一个硬件多队列派发过多req时，选择空闲的硬件队列派发req*/
+        unsigned int io_multi_queue_adjust;
 };
 
 struct throtl_data
@@ -461,7 +463,7 @@ static void tg_update_has_rules(struct throtl_grp *tg)
 
 	for (rw = READ; rw <= WRITE; rw++)
 		tg->has_rules[rw] = (parent_tg && parent_tg->has_rules[rw]) ||
-				    (tg->bps[rw] != -1 || tg->iops[rw] != -1 || tg->io_priority_control != 0);
+				    (tg->bps[rw] != -1 || tg->iops[rw] != -1 || tg->io_priority_control != 0 || tg->io_multi_queue_adjust != 0);
 }
 
 static void throtl_pd_online(struct blkcg_gq *blkg)
@@ -918,6 +920,13 @@ static bool tg_may_dispatch(struct throtl_grp *tg, struct bio *bio,
             bio->bi_flags |= (1 << BIO_HIGHPRIO);
             //printk("%s %s 0x%lx\n",__func__,current->comm,bio->bi_flags);
         }
+
+        /*当前进程有io_multi_queue_adjust属性*/
+        if(tg->io_priority_control != 0){
+            bio->bi_flags |= (1 << BIO_QUEUE_ADJUST);
+            //printk("%s %s 0x%lx\n",__func__,current->comm,bio->bi_flags);
+        }
+
 	/* If tg->bps = -1, then BW is unlimited */
 	if (tg->bps[rw] == -1 && tg->iops[rw] == -1) {
 		if (wait)
@@ -1474,6 +1483,14 @@ static struct cftype throtl_files[] = {
 		.write_string = tg_set_conf_u64,
 		.max_write_len = 256,
 	},
+        {
+		.name = "throttle.io_multi_queue_adjust",
+		.private = offsetof(struct throtl_grp, io_multi_queue_adjust),
+		.read_seq_string = tg_print_conf_u64,
+		.write_string = tg_set_conf_u64,
+		.max_write_len = 256,
+	},
+
 	{ }	/* terminate */
 };
 

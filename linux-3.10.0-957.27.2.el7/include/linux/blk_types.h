@@ -137,6 +137,7 @@ struct bio {
 #define BIO_MAPPED_INTEGRITY 11/* integrity metadata has been remapped */
 #define BIO_SNAP_STABLE	12	/* bio data must be snapshotted during write */
 #define BIO_HIGHPRIO	16	/* 高优先级传输bio */
+#define BIO_QUEUE_ADJUST   17	/* 有queue adjust属性的bio */
 
 /*
  * Flags starting here get preserved by bio_reset() - this includes
@@ -212,6 +213,7 @@ enum rq_flag_bits {
 	__REQ_STATS,
 #endif
         __REQ_HIGHPRIO,         /* 高优先级传输的req */
+        __REQ_QUEUE_ADJUST,     /* 有queue adjust属性的req */
 	__REQ_NR_BITS,		/* stops here */
 };
 
@@ -269,6 +271,8 @@ enum rq_flag_bits {
 #define REQ_STATS		(1ULL << __REQ_STATS)
 /*高优先传输的req*/
 #define REQ_HIGHPRIO            (1ULL << __REQ_HIGHPRIO)
+/*有queue adjust属性的req*/
+#define REQ_QUEUE_ADJUST        (1ULL << __REQ_QUEUE_ADJUST)
 
 enum req_op {
 	REQ_OP_READ,

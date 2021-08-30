@@ -101,6 +101,21 @@ static bool blk_mq_sched_restart_hctx(struct blk_mq_hw_ctx *hctx)
 	return blk_mq_run_hw_queue(hctx, true);
 }
 
+static struct blk_mq_hw_ctx *get_queue_adjust(struct request_queue *q,
+                                             struct bio *bio,
+                                             struct blk_mq_alloc_data *data)
+{
+    struct blk_mq_hw_ctx *hctx,*curr_hctx;
+    curr_hctx = blk_mq_map_queue(q, data->ctx->cpu);
+    for_each_possible_cpu(cpu){
+	hctx = blk_mq_map_queue(q,cpu);
+	if(curr_hctx != hctx  && hctx->queue_transfer_reqs < 10){
+	    break;
+	}
+    }
+    return hctx;
+}
+
 struct request *blk_mq_sched_get_request(struct request_queue *q,
 					 struct bio *bio,
 					 unsigned int op,

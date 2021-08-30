@@ -2547,6 +2547,8 @@ void blk_account_io_completion(struct request *req, unsigned int bytes)
 
                 if(req->cmd_flags & REQ_HIGHPRIO)//如果req有高优先级传输属性则清除掉，这个隐藏点点很重要
                     req->cmd_flags &= ~REQ_HIGHPRIO;
+                else if(req->cmd_flags & REQ_QUEUE_ADJUST)//如果req有queue adjust属性则清除掉，这个隐藏点点很重要
+                    req->cmd_flags &= ~REQ_QUEUE_ADJUST;
 
                 /***hujunpeng***test**********/
                 if(block_open_printk){
@@ -2577,6 +2579,8 @@ void blk_account_io_done(struct request *req)
 		part = req->part;
                 if(req->cmd_flags & REQ_HIGHPRIO)//如果req有高优先级传输属性则清除掉，这个隐藏点点很重要
                     req->cmd_flags &= ~REQ_HIGHPRIO;
+                else if(req->cmd_flags & REQ_QUEUE_ADJUST)//如果req有queue adjust属性则清除掉，这个隐藏点点很重要
+                    req->cmd_flags &= ~REQ_QUEUE_ADJUST;
 
                 /***hujunpeng***test**********/
                 if(block_open_printk){
