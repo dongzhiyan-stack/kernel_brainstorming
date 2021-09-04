@@ -1008,6 +1008,8 @@ static inline unsigned int queued_to_index(unsigned int queued)
 	return min(BLK_MQ_MAX_DISPATCH_ORDER - 1, ilog2(queued) + 1);
 }
 
+extern struct blk_mq_hw_ctx *make_queue_adjust(struct request_queue *q,unsigned int cpu);
+
 bool blk_mq_get_driver_tag(struct request *rq, struct blk_mq_hw_ctx **hctx,
 			   bool wait)
 {
@@ -1023,6 +1025,12 @@ bool blk_mq_get_driver_tag(struct request *rq, struct blk_mq_hw_ctx **hctx,
 	if (blk_mq_tag_is_reserved(data.hctx->sched_tags, rq_aux(rq)->internal_tag))
 		data.flags |= BLK_MQ_REQ_RESERVED;
 
+        //如果req有BIO_QUEUE_ADJUST属性，并且当前cpu绑定的硬件队列有很多req在排队传输，则找一个空闲的硬件队列返回
+    	if((rq->cmd_flags & REQ_QUEUE_ADJUST) && (atomic_read(&data.hctx->queue_transfer_reqs) > 50)){
+    	    data.hctx = make_queue_adjust(rq->q,rq->mq_ctx->cpu);
+            //rq->mq_ctx = data.hctx;
+    	}
+    				
 	rq->tag = blk_mq_get_tag(&data);
 	if (rq->tag >= 0) {
 		if (blk_mq_tag_busy(data.hctx)) {

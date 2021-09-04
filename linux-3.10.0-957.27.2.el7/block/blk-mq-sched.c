@@ -101,20 +101,26 @@ static bool blk_mq_sched_restart_hctx(struct blk_mq_hw_ctx *hctx)
 	return blk_mq_run_hw_queue(hctx, true);
 }
 
-static struct blk_mq_hw_ctx *get_queue_adjust(struct request_queue *q,
-                                             struct bio *bio,
-                                             struct blk_mq_alloc_data *data)
+struct blk_mq_hw_ctx *make_queue_adjust(struct request_queue *q,unsigned int cpu)
 {
     struct blk_mq_hw_ctx *hctx,*curr_hctx;
-    curr_hctx = blk_mq_map_queue(q, data->ctx->cpu);
+    int find = 0;
+
+    curr_hctx = blk_mq_map_queue(q,cpu);
     for_each_possible_cpu(cpu){
 	hctx = blk_mq_map_queue(q,cpu);
 	if(curr_hctx != hctx  && hctx->queue_transfer_reqs < 10){
+            find = 1;
 	    break;
 	}
     }
-    return hctx;
+
+    if(find)
+        return hctx;
+    else
+        return curr_hctx;
 }
+EXPORT_SYMBOL(make_queue_adjust);
 
 struct request *blk_mq_sched_get_request(struct request_queue *q,
 					 struct bio *bio,
@@ -131,6 +137,11 @@ struct request *blk_mq_sched_get_request(struct request_queue *q,
 		data->ctx = blk_mq_get_ctx(q);
 	if (likely(!data->hctx))
 		data->hctx = blk_mq_map_queue(q, data->ctx->cpu);
+       
+        //如果bio有BIO_QUEUE_ADJUST属性，并且当前cpu绑定的硬件队列有很多req在排队传输，则找一个空闲的硬件队列返回
+        if(bio->bi_flags & (1 << BIO_QUEUE_ADJUST) && atomic_read(&data->hctx->queue_transfer_reqs) > 50){
+            data->hctx = make_queue_adjust(q,data->ctx->cpu);
+        }
 
 	if (e) {
 		data->flags |= BLK_MQ_REQ_INTERNAL;
@@ -158,6 +169,11 @@ struct request *blk_mq_sched_get_request(struct request_queue *q,
 		data->hctx->queued++;
 		return rq;
 	}
+        
+        //如果最终还是req分配失败，则把bio的BIO_QUEUE_ADJUST属性清理掉
+        if(bio->bi_flags & (1 << BIO_QUEUE_ADJUST)){
+            bio->bi_flags &= ~(1 << BIO_QUEUE_ADJUST);
+        }
 
 	blk_queue_exit(q);
 	return NULL;
