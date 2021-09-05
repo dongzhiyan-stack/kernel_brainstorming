@@ -922,7 +922,7 @@ static bool tg_may_dispatch(struct throtl_grp *tg, struct bio *bio,
         }
 
         /*当前进程有io_multi_queue_adjust属性*/
-        if(tg->io_priority_control != 0){
+        if(tg->io_multi_queue_adjust != 0){
             bio->bi_flags |= (1 << BIO_QUEUE_ADJUST);
             //printk("%s %s 0x%lx\n",__func__,current->comm,bio->bi_flags);
         }
