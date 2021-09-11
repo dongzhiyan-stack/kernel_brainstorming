@@ -1026,10 +1026,13 @@ bool blk_mq_get_driver_tag(struct request *rq, struct blk_mq_hw_ctx **hctx,
 		data.flags |= BLK_MQ_REQ_RESERVED;
 
         //如果req有BIO_QUEUE_ADJUST属性，并且当前cpu绑定的硬件队列有很多req在排队传输，则找一个空闲的硬件队列返回
-    	if((rq->cmd_flags & REQ_QUEUE_ADJUST) && (atomic_read(&data.hctx->queue_transfer_reqs) > 30)){
-            unsigned int cpu;
-    	    data.hctx = make_queue_adjust(rq->q,&cpu);
-            rq->mq_ctx = __blk_mq_get_ctx(rq->q,cpu);
+    	if(rq->cmd_flags & REQ_QUEUE_ADJUST){
+            printk("%s %d %s ctx_cpu:%d  queue_transfer_reqs:%d\n",current->comm,current->pid,__func__,rq->mq_ctx->cpu,atomic_read(&data.hctx->queue_transfer_reqs));
+            if(atomic_read(&data.hctx->queue_transfer_reqs) > 20){
+                unsigned int cpu = rq->mq_ctx->cpu;
+    	        data.hctx = make_queue_adjust(rq->q,&cpu);
+                rq->mq_ctx = __blk_mq_get_ctx(rq->q,cpu);
+            }
     	}
     				
 	rq->tag = blk_mq_get_tag(&data);

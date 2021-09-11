@@ -110,9 +110,10 @@ struct blk_mq_hw_ctx *make_queue_adjust(struct request_queue *q,unsigned int *cu
     curr_hctx = blk_mq_map_queue(q,*curr_cpu);
     for_each_possible_cpu(cpu){
 	hctx = blk_mq_map_queue(q,cpu);
-	if(curr_hctx != hctx  && atomic_read(&hctx->queue_transfer_reqs) < 10){
+	if(curr_hctx != hctx  && atomic_read(&hctx->queue_transfer_reqs) < 5){
             find = 1;
-            *curr_cpu = 0;
+            printk("%s cpu:%d switch to cpu:%d\n",__func__,*curr_cpu,cpu);
+            *curr_cpu = cpu;
 	    break;
 	}
     }
@@ -141,9 +142,13 @@ struct request *blk_mq_sched_get_request(struct request_queue *q,
 		data->hctx = blk_mq_map_queue(q, data->ctx->cpu);
        
         //如果bio有BIO_QUEUE_ADJUST属性，并且当前cpu绑定的硬件队列有很多req在排队传输，则找一个空闲的硬件队列返回
-        if(bio->bi_flags & (1 << BIO_QUEUE_ADJUST) && atomic_read(&data->hctx->queue_transfer_reqs) > 30){
-            unsigned int cpu;
-            data->hctx = make_queue_adjust(q,&cpu);
+        if(bio && (bio->bi_flags & (1 << BIO_QUEUE_ADJUST))){
+            printk("%s %d %s cpu:%d data->hctx->queue_transfer_reqs:%d\n",current->comm,current->pid,__func__,data->ctx->cpu,atomic_read(&data->hctx->queue_transfer_reqs));
+            if(atomic_read(&data->hctx->queue_transfer_reqs) > 20){
+                unsigned int cpu = data->ctx->cpu;
+                data->hctx = make_queue_adjust(q,&cpu);
+                data->ctx = __blk_mq_get_ctx(q,cpu);//cpu may change,thus ctx change
+            }
         }
 
 	if (e) {
@@ -174,7 +179,7 @@ struct request *blk_mq_sched_get_request(struct request_queue *q,
 	}
         
         //如果最终还是req分配失败，则把bio的BIO_QUEUE_ADJUST属性清理掉
-        if(bio->bi_flags & (1 << BIO_QUEUE_ADJUST)){
+        if(bio &&  (bio->bi_flags & (1 << BIO_QUEUE_ADJUST))){
             bio->bi_flags &= ~(1 << BIO_QUEUE_ADJUST);
         }
 
