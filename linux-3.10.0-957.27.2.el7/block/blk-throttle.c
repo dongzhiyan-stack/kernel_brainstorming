@@ -439,6 +439,8 @@ static void throtl_pd_init(struct blkcg_gq *blkg)
 	tg->bps[WRITE] = -1;
 	tg->iops[READ] = -1;
 	tg->iops[WRITE] = -1;
+	tg->io_priority_control = -1;//必须赋初值-1
+	tg->io_multi_queue_adjust = -1;//必须赋初值-1
 
 	/*
 	 * Ugh... We need to perform per-cpu allocation for tg->stats_cpu
@@ -1479,15 +1481,17 @@ static struct cftype throtl_files[] = {
         {
 		.name = "throttle.io_priority_control",
 		.private = offsetof(struct throtl_grp, io_priority_control),
-		.read_seq_string = tg_print_conf_u64,
-		.write_string = tg_set_conf_u64,
+                //之前用的是 tg_print_conf_u64/tg_set_conf_u64读写64位数据,但struct throtl_grp的io_priority_control成员是32位数据，这样会导致内存越界
+		.read_seq_string = tg_print_conf_uint,
+		.write_string = tg_set_conf_uint,
 		.max_write_len = 256,
 	},
         {
 		.name = "throttle.io_multi_queue_adjust",
 		.private = offsetof(struct throtl_grp, io_multi_queue_adjust),
-		.read_seq_string = tg_print_conf_u64,
-		.write_string = tg_set_conf_u64,
+                //之前用的是 tg_print_conf_u64/tg_set_conf_u64读写64位数据,但struct throtl_grp的io_multi_queue_adjust成员是32位数据，这样会导致内存越界
+		.read_seq_string = tg_print_conf_uint,
+		.write_string = tg_set_conf_uint,
 		.max_write_len = 256,
 	},
 

@@ -1170,14 +1170,15 @@ bool blk_mq_dispatch_rq_list(struct request_queue *q, struct list_head *list,
 	LIST_HEAD(driver_list);
 	struct list_head *dptr;
 	int errors, queued, ret = BLK_MQ_RQ_QUEUE_OK;
-        LIST_HEAD(tmp_list);
+//        LIST_HEAD(tmp_list);
 
 	if (list_empty(list))
 		return false;
 
 	WARN_ON(!list_is_singular(list) && got_budget);
 
-        //如果req有高优先级传输属性则将该req放入队列头
+/*
+        //如果req有高优先级传输属性则将该req放入队列头---测试发现这段代码竟然会导致软锁死，无语了
         list_for_each_entry(rq,list,queuelist){
             if(rq->cmd_flags & REQ_HIGHPRIO){
                list_move_tail(&rq->queuelist,&tmp_list);
@@ -1186,6 +1187,7 @@ bool blk_mq_dispatch_rq_list(struct request_queue *q, struct list_head *list,
         if(!list_empty(&tmp_list)){
             list_splice_init(&tmp_list,list);//再把tmp_list链表上的高优先级属性req移动到list链表头
         }
+*/
 	/*
 	 * Start off with dptr being NULL, so we start the first request
 	 * immediately, even if we have more pending.
@@ -1245,7 +1247,7 @@ bool blk_mq_dispatch_rq_list(struct request_queue *q, struct list_head *list,
 		switch (ret) {
 		case BLK_MQ_RQ_QUEUE_OK:
 			queued++;
-                        atomic_inc(&hctx->queue_transfer_reqs);
+                        //atomic_inc(&hctx->queue_transfer_reqs);
 			break;
 		case BLK_MQ_RQ_QUEUE_BUSY:
 		case BLK_MQ_RQ_QUEUE_DEV_BUSY:
@@ -1732,7 +1734,7 @@ static int __blk_mq_issue_directly(struct blk_mq_hw_ctx *hctx, struct request *r
 	switch (ret) {
 	case BLK_MQ_RQ_QUEUE_OK:
 		blk_mq_update_dispatch_busy(hctx, false);
-                atomic_inc(&hctx->queue_transfer_reqs);
+                //atomic_inc(&hctx->queue_transfer_reqs);
 		break;
 	case BLK_MQ_RQ_QUEUE_BUSY:
 	case BLK_MQ_RQ_QUEUE_DEV_BUSY:

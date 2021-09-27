@@ -30,6 +30,9 @@
 #include <linux/cleancache.h>
 #include "internal.h"
 
+/*******************************************************************************/
+extern int mpage_fs_printk;
+
 /*
  * I/O completion handler for multipage BIOs.
  *
@@ -60,6 +63,9 @@ static struct bio *mpage_bio_submit(int rw, struct bio *bio)
 	bio->bi_end_io = mpage_end_io;
 	guard_bio_eod(rw, bio);
 	submit_bio(rw, bio);
+
+        if(mpage_fs_printk)
+            printk("%s %s %d submit_bio:%p\n",__func__,current->comm,current->pid,bio);
 	return NULL;
 }
 
@@ -81,6 +87,9 @@ mpage_alloc(struct block_device *bdev,
 		bio->bi_bdev = bdev;
 		bio->bi_sector = first_sector;
 	}
+
+        if(mpage_fs_printk)
+            printk("%s %s %d bio:%p first_sector:%ld nr_vecs:%d\n",__func__,current->comm,current->pid,bio,first_sector,nr_vecs);
 	return bio;
 }
 
@@ -168,24 +177,39 @@ do_mpage_readpage(struct bio *bio, struct page *page, unsigned nr_pages,
 		last_block = last_block_in_file;
 	page_block = 0;
 
+        if(mpage_fs_printk)
+            printk("%s %s %d nr_pages:%d page:0x%p page->index:%ld last_block_in_bio:%ld first_logical_block:%ld map_bh->b_blocknr:%ld map_bh->b_page:%p map_bh->b_size:%ld map_bh->b_state:0x%lx\n",__func__,current->comm,current->pid,nr_pages,page,page->index,*last_block_in_bio,*first_logical_block,map_bh->b_blocknr,map_bh->b_page,map_bh->b_size,map_bh->b_state);
 	/*
 	 * Map blocks using the result from the previous get_blocks call first.
 	 */
 	nblocks = map_bh->b_size >> blkbits;
+        if(mpage_fs_printk)
+            printk("%s %s %d nblocks:%d blkbits:%d blocks_per_page:%d block_in_file:%ld last_block_in_file:%ld last_block:%ld\n",__func__,current->comm,current->pid,nblocks,blkbits,blocks_per_page,block_in_file,last_block_in_file,last_block);
+
 	if (buffer_mapped(map_bh) && block_in_file > *first_logical_block &&
 			block_in_file < (*first_logical_block + nblocks)) {
 		unsigned map_offset = block_in_file - *first_logical_block;
 		unsigned last = nblocks - map_offset;
 
+                if(mpage_fs_printk)
+                    printk("%s %s %d <buffer_mapped(map_bh) &&> map_offset:%d last:%d\n",__func__,current->comm,current->pid,map_offset,last);
+
 		for (relative_block = 0; ; relative_block++) {
 			if (relative_block == last) {
 				clear_buffer_mapped(map_bh);
+                                if(mpage_fs_printk)
+                                    printk("%s %s %d <if(buffer_mapped(map_bh) &&> 1 break\n",__func__,current->comm,current->pid);
 				break;
 			}
-			if (page_block == blocks_per_page)
+			if (page_block == blocks_per_page){
+                                if(mpage_fs_printk)
+                                    printk("%s %s %d <if(buffer_mapped(map_bh) &&> 2 break\n",__func__,current->comm,current->pid);
 				break;
+                        }
 			blocks[page_block] = map_bh->b_blocknr + map_offset +
 						relative_block;
+                        if(mpage_fs_printk)
+                            printk("%s %s %d <buffer_mapped(map_bh) &&> page_block:%d block_in_file:%ld blocks[%d]:%ld\n",__func__,current->comm,current->pid,page_block,block_in_file,page_block,blocks[page_block]);
 			page_block++;
 			block_in_file++;
 		}
@@ -199,6 +223,9 @@ do_mpage_readpage(struct bio *bio, struct page *page, unsigned nr_pages,
 	while (page_block < blocks_per_page) {
 		map_bh->b_state = 0;
 		map_bh->b_size = 0;
+                
+                if(mpage_fs_printk)
+                    printk("%s %s %d while(page_block<blocks_per_page) block_in_file:%ld last_block:%ld\n",__func__,current->comm,current->pid,block_in_file,last_block);
 
 		if (block_in_file < last_block) {
 			map_bh->b_size = (last_block-block_in_file) << blkbits;
@@ -207,12 +234,18 @@ do_mpage_readpage(struct bio *bio, struct page *page, unsigned nr_pages,
 			*first_logical_block = block_in_file;
 		}
 
+                if(mpage_fs_printk)
+                    printk("%s %s %d while(page_block<blocks_per_page) map_bh->b_size:%ld first_logical_block:%ld map_bh->b_size:%ld map_bh->b_state:0x%lx\n",__func__,current->comm,current->pid,map_bh->b_size,*first_logical_block,map_bh->b_size,map_bh->b_state);
+
 		if (!buffer_mapped(map_bh)) {
 			fully_mapped = 0;
 			if (first_hole == blocks_per_page)
 				first_hole = page_block;
 			page_block++;
 			block_in_file++;
+                        
+                        if(mpage_fs_printk)
+                           printk("%s %s %d if (!buffer_mapped(map_bh))  page_block:%d block_in_file:%ld\n",__func__,current->comm,current->pid,page_block,block_in_file);
 			continue;
 		}
 
@@ -224,23 +257,39 @@ do_mpage_readpage(struct bio *bio, struct page *page, unsigned nr_pages,
 		 */
 		if (buffer_uptodate(map_bh)) {
 			map_buffer_to_page(page, map_bh, page_block);
+                        
+                        if(mpage_fs_printk)
+                            printk("%s %s %d if (buffer_uptodate(map_bh)\n",__func__,current->comm,current->pid);
 			goto confused;
 		}
 	
-		if (first_hole != blocks_per_page)
+		if (first_hole != blocks_per_page){
+                        if(mpage_fs_printk)
+                            printk("%s %s %d if (first_hole != blocks_per_page)\n",__func__,current->comm,current->pid);
 			goto confused;		/* hole -> non-hole */
+                }
 
 		/* Contiguous blocks? */
-		if (page_block && blocks[page_block-1] != map_bh->b_blocknr-1)
+		if (page_block && blocks[page_block-1] != map_bh->b_blocknr-1){
+                        if(mpage_fs_printk)
+                            printk("%s %s %d if (page_block && blocks[page_block-1] != map_bh->b_blocknr-1)\n",__func__,current->comm,current->pid);
 			goto confused;
+                }
 		nblocks = map_bh->b_size >> blkbits;
 		for (relative_block = 0; ; relative_block++) {
 			if (relative_block == nblocks) {
 				clear_buffer_mapped(map_bh);
+                                if(mpage_fs_printk)
+                                    printk("%s %s %d while(page_block<blocks_per_page) 1 break\n",__func__,current->comm,current->pid);
 				break;
-			} else if (page_block == blocks_per_page)
+			} else if (page_block == blocks_per_page){
+                                if(mpage_fs_printk)
+                                    printk("%s %s %d while(page_block<blocks_per_page) 2 break\n",__func__,current->comm,current->pid);
 				break;
+                        }
 			blocks[page_block] = map_bh->b_blocknr+relative_block;
+                        if(mpage_fs_printk)
+                            printk("%s %s %d while(page_block<blocks_per_page) page_block:%d block_in_file:%ld blocks[%d]:%ld\n",__func__,current->comm,current->pid,page_block,block_in_file,page_block,blocks[page_block]);
 			page_block++;
 			block_in_file++;
 		}
@@ -249,17 +298,24 @@ do_mpage_readpage(struct bio *bio, struct page *page, unsigned nr_pages,
 
 	if (first_hole != blocks_per_page) {
 		zero_user_segment(page, first_hole << blkbits, PAGE_CACHE_SIZE);
+                if(mpage_fs_printk)
+                    printk("%s %s %d if (first_hole != blocks_per_page)\n",__func__,current->comm,current->pid);
+
 		if (first_hole == 0) {
 			SetPageUptodate(page);
 			unlock_page(page);
 			goto out;
 		}
 	} else if (fully_mapped) {
+                if(mpage_fs_printk)
+                    printk("%s %s %d else if (fully_mapped)\n",__func__,current->comm,current->pid);
 		SetPageMappedToDisk(page);
 	}
 
 	if (fully_mapped && blocks_per_page == 1 && !PageUptodate(page) &&
 	    cleancache_get_page(page) == 0) {
+                if(mpage_fs_printk)
+                    printk("%s %s %d if (fully_mapped && blocks_per_page ==\n",__func__,current->comm,current->pid);
 		SetPageUptodate(page);
 		goto confused;
 	}
@@ -267,12 +323,18 @@ do_mpage_readpage(struct bio *bio, struct page *page, unsigned nr_pages,
 	/*
 	 * This page will go to BIO.  Do we need to send this BIO off first?
 	 */
-	if (bio && (*last_block_in_bio != blocks[0] - 1))
+	if (bio && (*last_block_in_bio != blocks[0] - 1)){
+                if(mpage_fs_printk)
+                    printk("%s %s %d if (bio && (*last_block_in_bio mpage_bio_submit\n",__func__,current->comm,current->pid);
 		bio = mpage_bio_submit(READ, bio);
+        }
 
 alloc_new:
 	if (bio == NULL) {
 		if (first_hole == blocks_per_page) {
+                        if(mpage_fs_printk)
+                            printk("%s %s %d if (first_hole == blocks_per_page) first_hole:%d blocks_per_page:%d\n",__func__,current->comm,current->pid,first_hole,blocks_per_page);
+
 			if (!bdev_read_page(bdev, blocks[0] << (blkbits - 9),
 								page))
 				goto out;
@@ -280,29 +342,54 @@ alloc_new:
 		bio = mpage_alloc(bdev, blocks[0] << (blkbits - 9),
 			  	min_t(int, nr_pages, bio_get_nr_vecs(bdev)),
 				gfp);
+
 		if (bio == NULL)
 			goto confused;
 	}
 
 	length = first_hole << blkbits;
+
+        if(mpage_fs_printk)
+            printk("%s %s %d bio_add_page bio:%p page:%p length:%d bio->bi_sector:%ld bio->bi_size:%d bio->bi_phys_segments:%d\n",__func__,current->comm,current->pid,bio,page,length,bio->bi_sector,bio->bi_size,bio->bi_phys_segments);
+
 	if (bio_add_page(bio, page, length, 0) < length) {
 		bio = mpage_bio_submit(READ, bio);
+                if(mpage_fs_printk)
+                    printk("%s %s %d if (bio_add_page(bio, page, length, 0) < length) mpage_bio_submit\n",__func__,current->comm,current->pid);
 		goto alloc_new;
 	}
 
 	relative_block = block_in_file - *first_logical_block;
 	nblocks = map_bh->b_size >> blkbits;
+
+        if(mpage_fs_printk)
+            printk("%s %s %d 1111111 bio:%p *first_logical_block:%ld block_in_file:%ld relative_block:%d map_bh->b_size:%ld nblocks:%d\n",__func__,current->comm,current->pid,bio,*first_logical_block,block_in_file,relative_block,map_bh->b_size,nblocks);
+
 	if ((buffer_boundary(map_bh) && relative_block == nblocks) ||
-	    (first_hole != blocks_per_page))
+	    (first_hole != blocks_per_page)){
 		bio = mpage_bio_submit(READ, bio);
-	else
+
+            if(mpage_fs_printk)
+                printk("%s %s %d return bio=mpage_bio_submit(READ, bio) bio:%p\n\n",__func__,current->comm,current->pid,bio);
+        }
+	else{
 		*last_block_in_bio = blocks[blocks_per_page - 1];
+                if(mpage_fs_printk)
+                    printk("%s %s %d return bio:%p *last_block_in_bio:%ld\n\n",__func__,current->comm,current->pid,bio,*last_block_in_bio);
+        }
 out:
 	return bio;
 
 confused:
-	if (bio)
+	if (bio){
 		bio = mpage_bio_submit(READ, bio);
+                if(mpage_fs_printk)
+                    printk("%s %s %d confused mpage_bio_submit(READ, bio) bio:%p\n",__func__,current->comm,current->pid,bio);
+        }
+
+        if(mpage_fs_printk)
+            printk("%s %s %d confused PageUptodate(page):%d\n",__func__,current->comm,current->pid,PageUptodate(page));
+
 	if (!PageUptodate(page))
 	        block_read_full_page(page, get_block);
 	else
@@ -366,6 +453,10 @@ mpage_readpages(struct address_space *mapping, struct list_head *pages,
 
 	map_bh.b_state = 0;
 	map_bh.b_size = 0;
+        
+        if(mpage_fs_printk)
+            printk("%s %s %d nr_pages:%d\n",__func__,current->comm,current->pid,nr_pages);
+
 	for (page_idx = 0; page_idx < nr_pages; page_idx++) {
 		struct page *page = list_entry(pages->prev, struct page, lru);
 
@@ -382,6 +473,9 @@ mpage_readpages(struct address_space *mapping, struct list_head *pages,
 		page_cache_release(page);
 	}
 	BUG_ON(!list_empty(pages));
+
+        if(mpage_fs_printk)
+            printk("%s return %s %d bio:0x%p\n",__func__,current->comm,current->pid,bio);
 	if (bio)
 		mpage_bio_submit(READ, bio);
 	return 0;

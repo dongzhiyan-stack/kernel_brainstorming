@@ -142,8 +142,8 @@ struct request *blk_mq_sched_get_request(struct request_queue *q,
 		data->hctx = blk_mq_map_queue(q, data->ctx->cpu);
        
         //如果bio有BIO_QUEUE_ADJUST属性，并且当前cpu绑定的硬件队列有很多req在排队传输，则找一个空闲的硬件队列返回
-        if(bio && (bio->bi_flags & (1 << BIO_QUEUE_ADJUST))){
-            printk("%s %d %s cpu:%d data->hctx->queue_transfer_reqs:%d\n",current->comm,current->pid,__func__,data->ctx->cpu,atomic_read(&data->hctx->queue_transfer_reqs));
+        if(bio && (bio->bi_flags & (1 << BIO_QUEUE_ADJUST)) && (data->hctx)){
+            printk("%s BIO_QUEUE_ADJUST %d %s cpu:%d hctx_queue_num:%d  queue_transfer_reqs:%d\n",current->comm,current->pid,__func__,data->ctx->cpu,data->hctx->queue_num,atomic_read(&data->hctx->queue_transfer_reqs));
             if(atomic_read(&data->hctx->queue_transfer_reqs) > 20){
                 unsigned int cpu = data->ctx->cpu;
                 data->hctx = make_queue_adjust(q,&cpu);

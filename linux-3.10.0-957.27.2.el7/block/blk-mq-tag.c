@@ -190,6 +190,8 @@ unsigned int blk_mq_get_tag(struct blk_mq_alloc_data *data)
 	finish_wait(&ws->wait, &wait);
 
 found_tag:
+        if(tag != -1 && data->hctx)
+            atomic_inc(&data->hctx->queue_transfer_reqs);//硬件队列正在使用的tag数加1
 	return tag + tag_offset;
 }
 
