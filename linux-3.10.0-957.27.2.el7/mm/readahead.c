@@ -142,6 +142,116 @@ out:
 	return ret;
 }
 
+#include <linux/kthread.h>
+struct async_file_read_info{
+    struct task_struct *task;
+    struct address_space *mapping;
+    struct file *filp;
+    unsigned long start_read_page;
+    atomic_t count;
+};
+struct async_file_read_info async_file_read;
+extern int async_read_printk;
+
+static int async_file_read_pages(struct async_file_read_info * p_async_file_read_info)
+{
+    struct address_space *mapping = p_async_file_read_info->mapping;
+    struct file *filp = p_async_file_read_info->filp;
+    pgoff_t page_to_read,start_read_page,page_offset;
+
+    struct inode *inode = mapping->host;
+    struct page *page;
+    unsigned long end_index;	/* The last page we want to read */
+    LIST_HEAD(page_pool);
+    int page_idx;
+    int ret = 0;
+    loff_t isize = i_size_read(inode);
+
+    if (isize == 0)
+	    return -1;
+
+    end_index = ((isize - 1) >> PAGE_CACHE_SHIFT);
+
+    start_read_page = p_async_file_read_info->start_read_page;
+    page_to_read = end_index - p_async_file_read_info->start_read_page;
+
+    for (page_idx = 0; page_idx < page_to_read; page_idx++){
+
+	    page_offset = start_read_page + page_idx;
+	    if (page_offset > end_index)
+		    break;
+
+	    rcu_read_lock();
+	    page = radix_tree_lookup(&mapping->page_tree, page_offset);
+	    rcu_read_unlock();
+	    if (page && !radix_tree_exceptional_entry(page))
+		    continue;
+
+	    page = page_cache_alloc_readahead(mapping);
+	    if (!page)
+		    break;
+	    page->index = page_offset;
+            if(async_read_printk)
+                printk("%s %s %d pages:0x%p page->index:%ld\n",__func__,current->comm,current->pid,page,page->index);
+                
+	    list_add(&page->lru, &page_pool);
+	    //if (page_idx == nr_to_read - lookahead_size)
+            //    SetPageReadahead(page);
+	    ret++;
+    }
+
+    p_async_file_read_info->start_read_page = start_read_page + page_idx;
+    printk("%s %s %d start_read_page:%ld page_to_read:%ld  read_pages:%d end_index:%ld\n",__func__,current->comm,current->pid,start_read_page,page_to_read,ret,end_index);
+    if (ret)
+	read_pages(mapping, filp, &page_pool, ret);
+
+    return 0;
+}
+static int async_file_read_thread(void *arg)
+{
+    struct async_file_read_info *async_file_read_tmp = (struct async_file_read_info *)arg;
+    while (!kthread_should_stop()) {
+        
+        if(atomic_read(&async_file_read_tmp->count) > 0)
+            atomic_dec(&async_file_read_tmp->count);
+        else
+            printk("%s %s %d sync_file_read.count:%d\n",__func__,current->comm,current->pid,atomic_read(&async_file_read_tmp->count));
+
+        //异步读        
+        async_file_read_pages(async_file_read_tmp);
+
+        //设置进程D状态，进程才会被移除进程运行队列
+        set_current_state(TASK_UNINTERRUPTIBLE);
+        schedule();
+        __set_current_state(TASK_RUNNING);
+    }
+    async_file_read_tmp->task = NULL;
+    return 0;
+}
+//这一个内核线程目前只支持单个读文件的进程异步读，可以创建多个内核线程，做成一个池子，支持多进程读文件时的异步读
+static int start_async_file_read(struct address_space *mapping,struct file *filp,unsigned long start_read_page)
+{
+    if(strcmp(current->comm,"test") == 0)
+    {
+	if(async_file_read.task == NULL){
+	    async_file_read.task = kthread_create(async_file_read_thread,(void *)&async_file_read,"async_file_read_thread");
+	    if (IS_ERR(async_file_read.task)) {
+		return -1;
+	    }
+	}
+        //sync_file_read.count为0成立并加1，说明这是第一个触发async_file_read的进程，目前支持一个进程async_file_read
+	if(atomic_add_return(1,&async_file_read.count) == 0){
+	    async_file_read.mapping = mapping;
+	    async_file_read.filp = filp;
+	    async_file_read.start_read_page = start_read_page;
+            //唤醒进程，只支持单个进程async_file_read
+	    wake_up_process(async_file_read.task);
+	}
+    }
+    //kthread_stop(async_file_read.task);//线程停止
+    return 0;
+}
+
 /*
  * __do_page_cache_readahead() actually reads a chunk of disk.  It allocates all
  * the pages first, then submits them all for I/O. This avoids the very bad
@@ -187,6 +297,9 @@ __do_page_cache_readahead(struct address_space *mapping, struct file *filp,
 		if (!page)
 			break;
 		page->index = page_offset;
+                if(async_read_printk)
+                    printk("%s %s %d pages:0x%p page->index:%ld\n",__func__,current->comm,current->pid,page,page->index);
+
 		list_add(&page->lru, &page_pool);
 		if (page_idx == nr_to_read - lookahead_size)
 			SetPageReadahead(page);
@@ -200,6 +313,11 @@ __do_page_cache_readahead(struct address_space *mapping, struct file *filp,
 	 */
 	if (ret)
 		read_pages(mapping, filp, &page_pool, ret);
+        
+        if(page_idx + offset <= end_index)
+           //page_idx + offset这个索引的page，是第一个hole page。start_async_file_read线程就是从这个page开始异步读
+            start_async_file_read(mapping, filp,page_idx + offset);
+
 	BUG_ON(!list_empty(&page_pool));
 out:
 	return ret;
