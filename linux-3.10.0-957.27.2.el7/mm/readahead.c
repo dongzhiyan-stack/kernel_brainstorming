@@ -211,17 +211,20 @@ static int async_file_read_thread(void *arg)
 {
     struct async_file_read_info *async_file_read_tmp = (struct async_file_read_info *)arg;
     while (!kthread_should_stop()) {
+        //开始异步读取文件 
+        async_file_read_pages(async_file_read_tmp);
         
+        //必须在async_file_read_pages()后判断async_file_read_tmp->count原子变量是否大于0。否则cat test读文件进程第一次触发的async_file_read_thread线程读文件还没完成，cat test第二次读文件触发的async_file_read_thread线程.可能会出现第一次赋值的async_file_read.start_read_page还没用，第2次又对async_file_read.start_read_page赋值，出现同步问题了
         if(atomic_read(&async_file_read_tmp->count) > 0)
             atomic_dec(&async_file_read_tmp->count);
         else
             printk("%s %s %d sync_file_read.count:%d\n",__func__,current->comm,current->pid,atomic_read(&async_file_read_tmp->count));
 
-        //异步读        
-        async_file_read_pages(async_file_read_tmp);
-
-        //设置进程D状态，进程才会被移除进程运行队列
-        set_current_state(TASK_UNINTERRUPTIBLE);
+        //设置进程D状态，进程才会被移除进程运行队列。错了，设置D状态会导致async_file_read_thread线程D状态120s后，被检测hung了，只能S状态休眠
+        set_current_state(TASK_INTERRUPTIBLE);
+        //这里可能有问题，async_file_read_thread()刚执行set_current_state(TASK_INTERRUPTIBLE)时，cat test读文件进程就执行start_async_file_read->wake_up_process
+        //唤醒async_file_read_thread线程。此时async_file_read_thread线程还没休眠，就执行了wake_up_process，这会导致async_file_read_thread线程错误被唤醒？不会出现
+        //因为wake_up_process->try_to_wake_up里要要检测线程是否on_cpu，如果on_cpu则休眠。只有等线程执行schedule()完全休眠令on_cpu=0。wake_up_process->try_to_wake_up才会唤醒线程。
         schedule();
         __set_current_state(TASK_RUNNING);
     }
@@ -231,22 +234,25 @@ static int async_file_read_thread(void *arg)
 //这一个内核线程目前只支持单个读文件的进程异步读，可以创建多个内核线程，做成一个池子，支持多进程读文件时的异步读
 static int start_async_file_read(struct address_space *mapping,struct file *filp,unsigned long start_read_page)
 {
-    if(strcmp(current->comm,"test") == 0)
+    if(strcmp(current->comm,"test") == 0 || strcmp(current->comm,"cat") == 0)
     {
 	if(async_file_read.task == NULL){
 	    async_file_read.task = kthread_create(async_file_read_thread,(void *)&async_file_read,"async_file_read_thread");
 	    if (IS_ERR(async_file_read.task)) {
+                printk("%s kthread_create fail\n",__func__);
 		return -1;
 	    }
 	}
         //sync_file_read.count为0成立并加1，说明这是第一个触发async_file_read的进程，目前支持一个进程async_file_read
-	if(atomic_add_return(1,&async_file_read.count) == 0){
+	if(atomic_add_return(1,&async_file_read.count) == 1){
 	    async_file_read.mapping = mapping;
 	    async_file_read.filp = filp;
 	    async_file_read.start_read_page = start_read_page;
             //唤醒进程，只支持单个进程async_file_read
 	    wake_up_process(async_file_read.task);
-	}
+	}else{
+            atomic_dec(&async_file_read.count);
+        }
     }
     //kthread_stop(async_file_read.task);//线程停止
     return 0;
