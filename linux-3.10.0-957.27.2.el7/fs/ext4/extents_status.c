@@ -15,7 +15,7 @@
 #include "extents_status.h"
 
 #include <trace/events/ext4.h>
-
+extern int ext4_printk;
 /*
  * According to previous discussion in Ext4 Developer Workshop, we
  * will introduce a new structure called io tree to track all extent
@@ -594,6 +594,8 @@ static int __es_insert_extent(struct inode *inode, struct extent_status *newes)
 	struct rb_node **p = &tree->root.rb_node;
 	struct rb_node *parent = NULL;
 	struct extent_status *es;
+        //if(ext4_printk)
+        //   printk("%s %s %d\n",__func__,current->comm,current->pid);
 
 	while (*p) {
 		parent = *p;
@@ -669,6 +671,8 @@ int ext4_es_insert_extent(struct inode *inode, ext4_lblk_t lblk,
 				" cause data loss.\n", lblk, len);
 		WARN_ON(1);
 	}
+        //if(ext4_printk)
+        //    printk("%s %s %d lblk:%d len:%d pblk:%lld status:0x%x\n",__func__,current->comm,current->pid,lblk,len,pblk,status);
 
 	newes.es_lblk = lblk;
 	newes.es_len = len;

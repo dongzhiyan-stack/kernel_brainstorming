@@ -47,7 +47,7 @@
 #include "truncate.h"
 
 #include <trace/events/ext4.h>
-
+extern int ext4_printk;
 #define MPAGE_DA_EXTENT_TAIL 0x01
 
 static __u32 ext4_inode_csum(struct inode *inode, struct ext4_inode *raw,
@@ -482,6 +482,8 @@ int ext4_map_blocks(handle_t *handle, struct inode *inode,
 		  "logical block %lu\n", inode->i_ino, flags, map->m_len,
 		  (unsigned long) map->m_lblk);
 
+        if(ext4_printk)
+            printk("1:%s %s %d flags:0x%x map->m_lblk:%d map->m_pblk:%lld map->m_len:%d\n",__func__,current->comm,current->pid,flags,map->m_lblk,map->m_pblk,map->m_len);
 	/*
 	 * ext4_map_blocks returns an int, and m_len is an unsigned int
 	 */
@@ -494,8 +496,12 @@ int ext4_map_blocks(handle_t *handle, struct inode *inode,
 
 	/* Lookup extent status tree firstly */
 	if (ext4_es_lookup_extent(inode, map->m_lblk, &es)) {
+                if(ext4_printk)
+                    printk("2:%s %s %d if (ext4_es_lookup_extent(inode, map->m_lblk, &es))\n",__func__,current->comm,current->pid);
 		ext4_es_lru_add(inode);
 		if (ext4_es_is_written(&es) || ext4_es_is_unwritten(&es)) {
+                        if(ext4_printk)
+                            printk("3:%s %s %d if (ext4_es_is_written(&es) || ext4_es_is_unwritten(&es))\n",__func__,current->comm,current->pid);
 			map->m_pblk = ext4_es_pblock(&es) +
 					map->m_lblk - es.es_lblk;
 			map->m_flags |= ext4_es_is_written(&es) ?
@@ -505,6 +511,8 @@ int ext4_map_blocks(handle_t *handle, struct inode *inode,
 				retval = map->m_len;
 			map->m_len = retval;
 		} else if (ext4_es_is_delayed(&es) || ext4_es_is_hole(&es)) {
+                        if(ext4_printk)
+                            printk("5:%s %s %d else if (ext4_es_is_delayed(&es) || ext4_es_is_hole(&es))\n",__func__,current->comm,current->pid);
 			map->m_pblk = 0;
 			retval = es.es_len - (map->m_lblk - es.es_lblk);
 			if (retval > map->m_len)
@@ -527,14 +535,21 @@ int ext4_map_blocks(handle_t *handle, struct inode *inode,
 	 */
 	down_read(&EXT4_I(inode)->i_data_sem);
 	if (ext4_test_inode_flag(inode, EXT4_INODE_EXTENTS)) {
+                if(ext4_printk)
+                    printk("6:%s %s %d 0x%x if(ext4_test_inode_flag(inode, EXT4_INODE_EXTENTS))\n",__func__,current->comm,current->pid,flags);
 		retval = ext4_ext_map_blocks(handle, inode, map, flags &
 					     EXT4_GET_BLOCKS_KEEP_SIZE);
 	} else {
+                if(ext4_printk)
+                    printk("7:%s %s %d else\n",__func__,current->comm,current->pid);
 		retval = ext4_ind_map_blocks(handle, inode, map, flags &
 					     EXT4_GET_BLOCKS_KEEP_SIZE);
 	}
 	if (retval > 0) {
 		unsigned int status;
+
+                if(ext4_printk)
+                    printk("8:%s %s %d if (retval > 0)\n",__func__,current->comm,current->pid);
 
 		if (unlikely(retval != map->m_len)) {
 			ext4_warning(inode->i_sb,
@@ -551,6 +566,9 @@ int ext4_map_blocks(handle_t *handle, struct inode *inode,
 		    ext4_find_delalloc_range(inode, map->m_lblk,
 					     map->m_lblk + map->m_len - 1))
 			status |= EXTENT_STATUS_DELAYED;
+                
+                if(ext4_printk)
+                    printk("9:%s %s %d map->m_lblk:%d map->m_pblk:%lld map->m_len:%d status:0x%x\n",__func__,current->comm,current->pid,map->m_lblk,map->m_pblk,map->m_len,status);
 		ret = ext4_es_insert_extent(inode, map->m_lblk,
 					    map->m_len, map->m_pblk, status);
 		if (ret < 0)
@@ -559,15 +577,23 @@ int ext4_map_blocks(handle_t *handle, struct inode *inode,
 	up_read((&EXT4_I(inode)->i_data_sem));
 
 found:
+        if(ext4_printk)
+            printk("10:%s %s %d found\n",__func__,current->comm,current->pid);
+
 	if (retval > 0 && map->m_flags & EXT4_MAP_MAPPED) {
+                if(ext4_printk)
+                    printk("10_1:%s %s %d found\n",__func__,current->comm,current->pid);
 		ret = check_block_validity(inode, map);
 		if (ret != 0)
 			return ret;
 	}
 
 	/* If it is only a block(s) look up */
-	if ((flags & EXT4_GET_BLOCKS_CREATE) == 0)
+	if ((flags & EXT4_GET_BLOCKS_CREATE) == 0){
+            if(ext4_printk)
+                printk("10_2:%s %s %d found\n",__func__,current->comm,current->pid);
 		return retval;
+        }
 
 	/*
 	 * Returns if the blocks have already allocated
@@ -582,8 +608,11 @@ found:
 		 * we continue and do the actual work in
 		 * ext4_ext_map_blocks()
 		 */
-		if (!(flags & EXT4_GET_BLOCKS_CONVERT_UNWRITTEN))
+		if (!(flags & EXT4_GET_BLOCKS_CONVERT_UNWRITTEN)){
+                        if(ext4_printk)
+                            printk("10_3:%s %s %d found\n",__func__,current->comm,current->pid);
 			return retval;
+                }
 
 	/*
 	 * Here we clear m_flags because after allocating an new extent,
@@ -604,8 +633,13 @@ found:
 	 * could have changed the inode type in between
 	 */
 	if (ext4_test_inode_flag(inode, EXT4_INODE_EXTENTS)) {
+                if(ext4_printk)
+                    printk("11:%s %s %d if (ext4_test_inode_flag(inode, EXT4_INODE_EXTENTS)) ->ext4_ext_map_blocks\n",__func__,current->comm,current->pid);
 		retval = ext4_ext_map_blocks(handle, inode, map, flags);
 	} else {
+                if(ext4_printk)
+                    printk("12:%s %s %d else ->ext4_ind_map_blocks\n",__func__,current->comm,current->pid);
+
 		retval = ext4_ind_map_blocks(handle, inode, map, flags);
 
 		if (retval > 0 && map->m_flags & EXT4_MAP_NEW) {
@@ -631,6 +665,9 @@ found:
 	if (retval > 0) {
 		unsigned int status;
 
+                if(ext4_printk)
+                    printk("13:%s %s %d if (retval > 0)\n",__func__,current->comm,current->pid);
+
 		if (unlikely(retval != map->m_len)) {
 			ext4_warning(inode->i_sb,
 				     "ES len assertion failed for inode "
@@ -655,6 +692,9 @@ found:
 				unmap_underlying_metadata(inode->i_sb->s_bdev,
 							  map->m_pblk + i);
 			}
+                        if(ext4_printk)
+                            printk("14:%s %s %d if (flags & EXT4_GET_BLOCKS_ZERO && ->ext4_issue_zeroout map->m_lblk:%d map->m_pblk:%lld map->m_len:%d\n",__func__,current->comm,current->pid,map->m_lblk,map->m_pblk,map->m_len);
+
 			ret = ext4_issue_zeroout(inode, map->m_lblk,
 						 map->m_pblk, map->m_len);
 			if (ret) {
@@ -679,6 +719,10 @@ found:
 		    ext4_find_delalloc_range(inode, map->m_lblk,
 					     map->m_lblk + map->m_len - 1))
 			status |= EXTENT_STATUS_DELAYED;
+                
+                if(ext4_printk)
+                    printk("15:%s %s %d ->ext4_es_insert_extent() map->m_lblk:%d map->m_pblk:%lld map->m_len:%d\n",__func__,current->comm,current->pid,map->m_lblk,map->m_pblk,map->m_len);
+
 		ret = ext4_es_insert_extent(inode, map->m_lblk, map->m_len,
 					    map->m_pblk, status);
 		if (ret < 0) {
@@ -690,6 +734,9 @@ found:
 out_sem:
 	up_write((&EXT4_I(inode)->i_data_sem));
 	if (retval > 0 && map->m_flags & EXT4_MAP_MAPPED) {
+                if(ext4_printk)
+                    printk("16:%s %s %d if (retval > 0 && map->m_flags & EXT4_MAP_MAPPED) \n",__func__,current->comm,current->pid);
+
 		ret = check_block_validity(inode, map);
 		if (ret != 0)
 			return ret;
@@ -709,6 +756,9 @@ out_sem:
 				return ret;
 		}
 	}
+        if(ext4_printk)
+            printk("17:%s %s %d retval:%d\n",__func__,current->comm,current->pid,retval);
+
 	return retval;
 }
 

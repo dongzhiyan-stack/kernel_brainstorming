@@ -1349,6 +1349,8 @@ static inline void bdi_dirty_limits(struct backing_dev_info *bdi,
 	}
 }
 
+extern int dirty_balance_printk;
+extern int dirty_balance_printk2;
 /*
  * balance_dirty_pages() must be called by processes which are generating dirty
  * data.  It looks at the number of dirty pages in the machine and will force
@@ -1395,6 +1397,9 @@ static void balance_dirty_pages(struct address_space *mapping,
 		nr_dirty = nr_reclaimable + global_page_state(NR_WRITEBACK);
 
 		global_dirty_limits(&background_thresh, &dirty_thresh);
+                
+                if(dirty_balance_printk)
+                     printk("1:%s %s %d pages_dirtied:%ld nr_reclaimable:%ld nr_dirty:%ld background_thresh:%ld dirty_thresh:%ld\n",__func__,current->comm,current->pid,pages_dirtied,nr_reclaimable,nr_dirty,background_thresh,dirty_thresh);
 
 		if (unlikely(strictlimit)) {
 			bdi_dirty_limits(bdi, dirty_thresh, background_thresh,
@@ -1408,6 +1413,8 @@ static void balance_dirty_pages(struct address_space *mapping,
 			bg_thresh = background_thresh;
 		}
 
+                if(dirty_balance_printk)
+                    printk("2:%s %s %d dirty:%ld thresh:%ld bg_thresh:%ld\n",__func__,current->comm,current->pid,dirty,thresh,bg_thresh);
 		/*
 		 * Throttle it only when the background writeback cannot
 		 * catch-up. This avoids (excessively) small writeouts
@@ -1422,35 +1429,50 @@ static void balance_dirty_pages(struct address_space *mapping,
 			current->nr_dirtied = 0;
 			current->nr_dirtied_pause =
 				dirty_poll_interval(dirty, thresh);
+                        if(dirty_balance_printk)
+                            printk("3:%s %s %d current->nr_dirtied_pause:%d current->dirty_paused_when:%ld if (dirty <= dirty_freerun_ceiling(thresh, bg_thresh)) break\n",__func__,current->comm,current->pid,current->nr_dirtied_pause,current->dirty_paused_when);
 			break;
 		}
 
-		if (unlikely(!writeback_in_progress(bdi)))
+		if (unlikely(!writeback_in_progress(bdi))){
 			bdi_start_background_writeback(bdi);
+                        if(dirty_balance_printk)
+                            printk("4:%s %s %d if (unlikely(!writeback_in_progress(bdi)))\n",__func__,current->comm,current->pid);
+                }
 
-		if (!strictlimit)
+		if (!strictlimit){
 			bdi_dirty_limits(bdi, dirty_thresh, background_thresh,
 					 &bdi_dirty, &bdi_thresh, NULL);
+                        if(dirty_balance_printk)
+                            printk("5:%s %s %d if (!strictlimit) bdi_dirty:%ld bdi_thresh:%ld\n",__func__,current->comm,current->pid,bdi_dirty,bdi_thresh);
+                }
 
 		dirty_exceeded = (bdi_dirty > bdi_thresh) &&
 				 ((nr_dirty > dirty_thresh) || strictlimit);
-		if (dirty_exceeded && !bdi->dirty_exceeded)
+		if (dirty_exceeded && !bdi->dirty_exceeded){
 			bdi->dirty_exceeded = 1;
-
+                        if(dirty_balance_printk)
+                             printk("6:%s %s %d if (dirty_exceeded && !bdi->dirty_exceeded) bdi->dirty_exceeded:%d\n",__func__,current->comm,current->pid,bdi->dirty_exceeded);
+                }
 		bdi_update_bandwidth(bdi, dirty_thresh, background_thresh,
 				     nr_dirty, bdi_thresh, bdi_dirty,
 				     start_time);
+
 
 		dirty_ratelimit = bdi->dirty_ratelimit;
 		pos_ratio = bdi_position_ratio(bdi, dirty_thresh,
 					       background_thresh, nr_dirty,
 					       bdi_thresh, bdi_dirty);
+                if(dirty_balance_printk)
+                    printk("7:%s %s %d bdi->dirty_ratelimit:%ld pos_ratio:%ld dirty_thresh:%ld background_thresh:%ld nr_dirty:%ld bdi_thresh:%ld bdi_dirty:%ld\n",__func__,current->comm,current->pid,bdi->dirty_ratelimit,pos_ratio,dirty_thresh,background_thresh,nr_dirty,bdi_thresh,bdi_dirty);
 		task_ratelimit = ((u64)dirty_ratelimit * pos_ratio) >>
 							RATELIMIT_CALC_SHIFT;
 		max_pause = bdi_max_pause(bdi, bdi_dirty);
 		min_pause = bdi_min_pause(bdi, max_pause,
 					  task_ratelimit, dirty_ratelimit,
 					  &nr_dirtied_pause);
+                if(dirty_balance_printk)
+                    printk("8:%s %s %d task_ratelimit:%ld dirty_ratelimit:%ld nr_dirtied_pause:%d min_pause:%ld max_pause:%ld\n",__func__,current->comm,current->pid,task_ratelimit,dirty_ratelimit,nr_dirtied_pause,min_pause,max_pause);
 
 		if (unlikely(task_ratelimit == 0)) {
 			period = max_pause;
@@ -1461,6 +1483,9 @@ static void balance_dirty_pages(struct address_space *mapping,
 		pause = period;
 		if (current->dirty_paused_when)
 			pause -= now - current->dirty_paused_when;
+
+                if(dirty_balance_printk)
+                    printk("9:%s %s %d pages_dirtied:%ld period:%ld pause:%ld current->dirty_paused_when:%ld now:%ld\n",__func__,current->comm,current->pid,pages_dirtied,period,pause,current->dirty_paused_when,now);
 		/*
 		 * For less than 1s think time (ext3/4 may block the dirtier
 		 * for up to 800ms from time to time on 1-HDD; so does xfs,
@@ -1484,17 +1509,28 @@ static void balance_dirty_pages(struct address_space *mapping,
 			if (pause < -HZ) {
 				current->dirty_paused_when = now;
 				current->nr_dirtied = 0;
+                                if(dirty_balance_printk)
+                                    printk("10:%s %s %d pause < -HZ\n",__func__,current->comm,current->pid);
+
 			} else if (period) {
 				current->dirty_paused_when += period;
 				current->nr_dirtied = 0;
+                                if(dirty_balance_printk)
+                                    printk("11:%s %s %d period\n",__func__,current->comm,current->pid);
 			} else if (current->nr_dirtied_pause <= pages_dirtied)
 				current->nr_dirtied_pause += pages_dirtied;
+
+                        if(dirty_balance_printk)
+                            printk("12:%s %s %d current->dirty_paused_when:%ld current->nr_dirtied:%d current->nr_dirtied_pause:%d\n",__func__,current->comm,current->pid,current->dirty_paused_when,current->nr_dirtied,current->nr_dirtied_pause);
 			break;
 		}
 		if (unlikely(pause > max_pause)) {
 			/* for occasional dropped task_ratelimit */
 			now += min(pause - max_pause, max_pause);
 			pause = max_pause;
+
+                        if(dirty_balance_printk)
+                            printk("13:%s %s %d if (unlikely(pause > max_pause)) now:%ld pause:%ld\n",__func__,current->comm,current->pid,now,pause);
 		}
 
 pause:
@@ -1516,7 +1552,8 @@ pause:
 		current->dirty_paused_when = now + pause;
 		current->nr_dirtied = 0;
 		current->nr_dirtied_pause = nr_dirtied_pause;
-
+                if(dirty_balance_printk)
+                    printk("14:%s %s %d now:%ld pause:%ld current->dirty_paused_when:%ld current->nr_dirtied_pause:%d task_ratelimit:%ld\n",__func__,current->comm,current->pid,now,pause,current->dirty_paused_when,current->nr_dirtied_pause,task_ratelimit);
 		/*
 		 * This is typically equal to (nr_dirty < dirty_thresh) and can
 		 * also keep "1000+ dd on a slow USB stick" under control.
@@ -1534,18 +1571,28 @@ pause:
 		 * more page. However bdi_dirty has accounting errors.  So use
 		 * the larger and more IO friendly bdi_stat_error.
 		 */
-		if (bdi_dirty <= bdi_stat_error(bdi))
+		if (bdi_dirty <= bdi_stat_error(bdi)){
+                        printk("15:%s %s %d if (bdi_dirty <= bdi_stat_error(bdi))\n",__func__,current->comm,current->pid);
 			break;
+                }
 
-		if (fatal_signal_pending(current))
+		if (fatal_signal_pending(current)){
+                        printk("16:%s %s %d if (fatal_signal_pending(current))\n",__func__,current->comm,current->pid);
 			break;
+                }
 	}
 
-	if (!dirty_exceeded && bdi->dirty_exceeded)
+	if (!dirty_exceeded && bdi->dirty_exceeded){
+                if(dirty_balance_printk)
+                     printk("17:%s %s %d f (!dirty_exceeded && bdi->dirty_exceeded) bdi->dirty_exceeded = 0\n",__func__,current->comm,current->pid);
 		bdi->dirty_exceeded = 0;
+        }
 
-	if (writeback_in_progress(bdi))
+	if (writeback_in_progress(bdi)){
+                if(dirty_balance_printk)
+                    printk("18:%s %s %d  if (writeback_in_progress(bdi))\n",__func__,current->comm,current->pid);
 		return;
+        }
 
 	/*
 	 * In laptop mode, we wait until hitting the higher threshold before
@@ -1555,11 +1602,17 @@ pause:
 	 * In normal mode, we start background writeout at the lower
 	 * background_thresh, to keep the amount of dirty memory low.
 	 */
-	if (laptop_mode)
+	if (laptop_mode){
+                if(dirty_balance_printk)
+                    printk("19:%s %s %d if (laptop_mode)\n",__func__,current->comm,current->pid);
 		return;
+        }
 
-	if (nr_reclaimable > background_thresh)
+	if (nr_reclaimable > background_thresh){
+                if(dirty_balance_printk)
+                     printk("20:%s %s %d bdi_start_background_writeback() nr_reclaimable:%ld background_thresh%ld\n",__func__,current->comm,current->pid,nr_reclaimable,background_thresh);
 		bdi_start_background_writeback(bdi);
+        }
 }
 
 void set_page_dirty_balance(struct page *page, int page_mkwrite)
@@ -1624,12 +1677,20 @@ void balance_dirty_pages_ratelimited(struct address_space *mapping)
 	 * time, hence all honoured too large initial task->nr_dirtied_pause.
 	 */
 	p =  this_cpu_ptr(&bdp_ratelimits);
-	if (unlikely(current->nr_dirtied >= ratelimit))
+	if (unlikely(current->nr_dirtied >= ratelimit)){
 		*p = 0;
+                if(dirty_balance_printk2)
+                    printk("1:%s %s %d if (unlikely(current->nr_dirtied >= ratelimit)) current->nr_dirtied:%d ratelimit:%d\n",__func__,current->comm,current->pid,current->nr_dirtied,ratelimit);
+        }
 	else if (unlikely(*p >= ratelimit_pages)) {
 		*p = 0;
 		ratelimit = 0;
+                if(dirty_balance_printk2)
+                    printk("2:%s %s %d else if (unlikely(*p >= ratelimit_pages))\n",__func__,current->comm,current->pid);
 	}
+        
+        if(dirty_balance_printk2)
+            printk("3:%s %s %d bdi->dirty_exceeded:%d current->nr_dirtied_pause:%d ratelimit:%d bdp_ratelimits:%d current->nr_dirtied:%d ratelimit_pages:%ld\n",__func__,current->comm,current->pid,bdi->dirty_exceeded,current->nr_dirtied_pause,ratelimit,*p,current->nr_dirtied,ratelimit_pages);
 	/*
 	 * Pick up the dirtied pages by the exited tasks. This avoids lots of
 	 * short-lived tasks (eg. gcc invocations in a kernel build) escaping
@@ -1639,10 +1700,16 @@ void balance_dirty_pages_ratelimited(struct address_space *mapping)
 	if (*p > 0 && current->nr_dirtied < ratelimit) {
 		unsigned long nr_pages_dirtied;
 		nr_pages_dirtied = min(*p, ratelimit - current->nr_dirtied);
+                if(dirty_balance_printk2)
+                    printk("4:%s %s %d current->nr_dirtied:%d dirty_throttle_leaks:%d nr_pages_dirtied:%ld\n",__func__,current->comm,current->pid,current->nr_dirtied,*p,nr_pages_dirtied);
 		*p -= nr_pages_dirtied;
 		current->nr_dirtied += nr_pages_dirtied;
+
 	}
 	preempt_enable();
+
+        if(dirty_balance_printk2)
+           printk("5:%s %s %d current->nr_dirtied:%d ratelimit:%d\n",__func__,current->comm,current->pid,current->nr_dirtied,ratelimit);
 
 	if (unlikely(current->nr_dirtied >= ratelimit))
 		balance_dirty_pages(mapping, current->nr_dirtied);

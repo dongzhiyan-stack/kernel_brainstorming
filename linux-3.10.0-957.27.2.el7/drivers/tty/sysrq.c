@@ -319,6 +319,13 @@ static struct sysrq_key_op sysrq_ftrace_dump_op = {
 int block_open_printk = 0;
 int mpage_fs_printk = 0;
 int async_read_printk = 0;
+int dirty_balance_printk = 0;
+int mpage_write_printk = 0;
+//int dirty_balance_printk2 = 0;
+int dirty_balance_printk2 = 0;
+int ext4_printk = 0;
+EXPORT_SYMBOL(ext4_printk);
+
 
 int sysrq_count = 0;
 unsigned long gettimeofday_us(void)
@@ -332,32 +339,80 @@ unsigned long gettimeofday_us(void)
 static void sysrq_handle_showmem(int key)
 {
         if(sysrq_count == 0){
+             sysrq_count = 1;
+             ext4_printk = 1;
+        }else{
+             sysrq_count = 0;
+             ext4_printk = 0;
+        }
+        printk("ext4_printk:%d\n",ext4_printk);
+/*
+        if(sysrq_count == 0){
             sysrq_count = 1;
 
             block_open_printk = 1;
             mpage_fs_printk = 0;
             async_read_printk = 0;
+            dirty_balance_printk = 0;
+            mpage_write_printk = 0;
+            dirty_balance_printk2 = 0;
         }else if(sysrq_count == 1){
             sysrq_count = 2;
 
             block_open_printk = 0;
             mpage_fs_printk = 1;
             async_read_printk = 0;
+            dirty_balance_printk = 0;
+            mpage_write_printk = 0;
+            dirty_balance_printk2 = 0;
         }else if(sysrq_count == 2){
             sysrq_count = 3;
 
             block_open_printk = 0;
             mpage_fs_printk = 0;
             async_read_printk = 1;
+            dirty_balance_printk = 0;
+            mpage_write_printk = 0;
+            dirty_balance_printk2 = 0;
+        }else if(sysrq_count == 3){
+            sysrq_count = 4;
+
+            block_open_printk = 0;
+            mpage_fs_printk = 0;
+            async_read_printk = 0;
+            dirty_balance_printk = 1;
+            mpage_write_printk = 0;
+            dirty_balance_printk2 = 0;
+        }else if(sysrq_count == 4){
+            sysrq_count = 5;
+
+            block_open_printk = 0;
+            mpage_fs_printk = 0;
+            async_read_printk = 0;
+            dirty_balance_printk = 0;
+            mpage_write_printk = 1;
+            dirty_balance_printk2 = 0;
+        }else if(sysrq_count == 5){
+            sysrq_count = 6;
+
+            block_open_printk = 0;
+            mpage_fs_printk = 0;
+            async_read_printk = 0;
+            dirty_balance_printk = 0;
+            mpage_write_printk = 0;
+            dirty_balance_printk2 = 1;
         }else{
             sysrq_count = 0;
             block_open_printk = 0;
             mpage_fs_printk = 0;
             async_read_printk = 0;
+            dirty_balance_printk = 0;
+            mpage_write_printk = 0;
+            dirty_balance_printk2 = 0;
         }
 
-        printk("sysrq_count:%d block_open_printk:%d mpage_fs_printk:%d async_read_printk:%d\n",sysrq_count,block_open_printk,mpage_fs_printk,async_read_printk);
-
+        printk("sysrq_count:%d block_open_printk:%d mpage_fs_printk:%d async_read_printk:%d dirty_balance_printk:%d mpage_write_printk:%d dirty_balance_printk2:%d\n",sysrq_count,block_open_printk,mpage_fs_printk,async_read_printk,dirty_balance_printk,mpage_write_printk,dirty_balance_printk2);
+*/
 	//show_mem(0);
 }
 static struct sysrq_key_op sysrq_showmem_op = {
